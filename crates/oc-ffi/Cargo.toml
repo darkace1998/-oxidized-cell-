@@ -1,0 +1,17 @@
+[package]
+name = "oc-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "FFI bridge to C++ for oxidized-cell PS3 emulator"
+build = "build.rs"
+
+[dependencies]
+oc-core.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+cc = "1.0"
+
+[dev-dependencies]

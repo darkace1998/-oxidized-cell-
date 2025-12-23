@@ -1,0 +1,15 @@
+[package]
+name = "oc-loader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ELF/SELF loader for oxidized-cell PS3 emulator"
+
+[dependencies]
+oc-core.workspace = true
+oc-memory.workspace = true
+tracing.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]

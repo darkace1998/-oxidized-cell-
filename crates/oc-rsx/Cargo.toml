@@ -1,0 +1,17 @@
+[package]
+name = "oc-rsx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "RSX graphics emulation for oxidized-cell PS3 emulator"
+
+[dependencies]
+oc-core.workspace = true
+oc-memory.workspace = true
+tracing.workspace = true
+bitflags.workspace = true
+bytemuck.workspace = true
+ash.workspace = true
+
+[dev-dependencies]
