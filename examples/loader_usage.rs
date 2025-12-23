@@ -170,9 +170,7 @@ fn example_crypto_engine() -> Result<(), Box<dyn std::error::Error>> {
     println!("    Debug keys: {}", stats.debug_keys);
     println!("    Retail keys: {}", stats.retail_keys);
     println!("    App keys: {}", stats.app_keys);
-    println!("    Total keys: {}", 
-             stats.debug_keys + stats.retail_keys + stats.app_keys +
-             stats.iso_spu_keys + stats.lv1_keys + stats.lv2_keys);
+    println!("    Total keys: {}", stats.total());
 
     // Example: Add a custom key
     let custom_key = KeyEntry {

@@ -263,12 +263,16 @@ impl PrxLoader {
     /// Calculate NID (Name ID) for a symbol name
     /// This is a simplified hash - PS3 uses SHA-1 truncated to 32 bits
     fn calculate_nid(name: &str) -> u32 {
+        // FNV-1a hash constants
+        const FNV_OFFSET_BASIS: u32 = 0x811c9dc5;
+        const FNV_PRIME: u32 = 0x01000193;
+
         // Simple hash for demonstration
         // Real implementation would use SHA-1 and take first 4 bytes
-        let mut hash: u32 = 0x811c9dc5; // FNV-1a offset basis
+        let mut hash: u32 = FNV_OFFSET_BASIS;
         for byte in name.bytes() {
             hash ^= byte as u32;
-            hash = hash.wrapping_mul(0x01000193); // FNV-1a prime
+            hash = hash.wrapping_mul(FNV_PRIME);
         }
         hash
     }

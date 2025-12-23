@@ -44,6 +44,12 @@ pub struct KeyEntry {
     pub description: String,
 }
 
+/// AES key size constants
+const AES_128_KEY_SIZE: usize = 16;
+const AES_256_KEY_SIZE: usize = 32;
+const AES_IV_SIZE: usize = 16;
+const AES_BLOCK_SIZE: usize = 16;
+
 /// Crypto engine for SELF decryption
 pub struct CryptoEngine {
     keys: HashMap<KeyType, Vec<KeyEntry>>,
@@ -70,15 +76,15 @@ impl CryptoEngine {
         // Add placeholder entries
         self.add_key(KeyEntry {
             key_type: KeyType::Debug,
-            key: vec![0u8; 16],
-            iv: Some(vec![0u8; 16]),
+            key: vec![0u8; AES_128_KEY_SIZE],
+            iv: Some(vec![0u8; AES_IV_SIZE]),
             description: "Placeholder debug key".to_string(),
         });
 
         self.add_key(KeyEntry {
             key_type: KeyType::Retail,
-            key: vec![0u8; 16],
-            iv: Some(vec![0u8; 16]),
+            key: vec![0u8; AES_128_KEY_SIZE],
+            iv: Some(vec![0u8; AES_IV_SIZE]),
             description: "Placeholder retail key".to_string(),
         });
     }
@@ -123,19 +129,19 @@ impl CryptoEngine {
         );
 
         // Validate inputs
-        if key.len() != 16 && key.len() != 32 {
+        if key.len() != AES_128_KEY_SIZE && key.len() != AES_256_KEY_SIZE {
             return Err(LoaderError::DecryptionFailed(
-                "Invalid key length (must be 16 or 32 bytes)".to_string(),
+                format!("Invalid key length (must be {} or {} bytes)", AES_128_KEY_SIZE, AES_256_KEY_SIZE),
             ));
         }
 
-        if iv.len() != 16 {
+        if iv.len() != AES_IV_SIZE {
             return Err(LoaderError::DecryptionFailed(
-                "Invalid IV length (must be 16 bytes)".to_string(),
+                format!("Invalid IV length (must be {} bytes)", AES_IV_SIZE),
             ));
         }
 
-        if encrypted_data.len() % 16 != 0 {
+        if encrypted_data.len() % AES_BLOCK_SIZE != 0 {
             return Err(LoaderError::DecryptionFailed(
                 "Encrypted data length must be multiple of 16".to_string(),
             ));
@@ -162,22 +168,22 @@ impl CryptoEngine {
         );
 
         // Validate inputs
-        if key.len() != 16 && key.len() != 32 {
+        if key.len() != AES_128_KEY_SIZE && key.len() != AES_256_KEY_SIZE {
             return Err(LoaderError::DecryptionFailed(
-                "Invalid key length (must be 16 or 32 bytes)".to_string(),
+                format!("Invalid key length (must be {} or {} bytes)", AES_128_KEY_SIZE, AES_256_KEY_SIZE),
             ));
         }
 
-        if iv.len() != 16 {
+        if iv.len() != AES_IV_SIZE {
             return Err(LoaderError::DecryptionFailed(
-                "Invalid IV length (must be 16 bytes)".to_string(),
+                format!("Invalid IV length (must be {} bytes)", AES_IV_SIZE),
             ));
         }
 
         // Pad data to 16-byte blocks
         let mut padded_data = plaintext.to_vec();
-        let padding_needed = 16 - (plaintext.len() % 16);
-        if padding_needed != 16 {
+        let padding_needed = AES_BLOCK_SIZE - (plaintext.len() % AES_BLOCK_SIZE);
+        if padding_needed != AES_BLOCK_SIZE {
             padded_data.extend(vec![padding_needed as u8; padding_needed]);
         }
 
@@ -198,7 +204,7 @@ impl CryptoEngine {
             .ok_or_else(|| LoaderError::DecryptionFailed("Key not found".to_string()))?;
 
         // MetaLV2 uses specific IV (typically all zeros)
-        let iv = vec![0u8; 16];
+        let iv = vec![0u8; AES_IV_SIZE];
 
         self.decrypt_aes(encrypted_metadata, key, &iv)
     }
@@ -253,6 +259,14 @@ pub struct KeyStats {
     pub iso_spu_keys: usize,
     pub lv1_keys: usize,
     pub lv2_keys: usize,
+}
+
+impl KeyStats {
+    /// Get total number of keys across all types
+    pub fn total(&self) -> usize {
+        self.retail_keys + self.debug_keys + self.app_keys +
+        self.iso_spu_keys + self.lv1_keys + self.lv2_keys
+    }
 }
 
 impl Default for CryptoEngine {
