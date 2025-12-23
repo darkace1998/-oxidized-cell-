@@ -14,6 +14,10 @@ pub type ThreadId = u64;
 pub const PRIORITY_MIN: u32 = 0;
 pub const PRIORITY_MAX: u32 = 3071;
 
+/// Stack constants
+const STACK_BASE: u64 = 0xD000_0000;
+const STACK_OFFSET: u64 = 0x10000;
+
 /// Thread attributes
 #[derive(Debug, Clone)]
 pub struct ThreadAttributes {
@@ -251,7 +255,7 @@ pub mod syscalls {
         attributes.name = name.to_string();
 
         // Allocate stack (simplified - would use memory manager)
-        let stack_addr = 0xD000_0000 + (manager.count() as u64 * 0x10000);
+        let stack_addr = STACK_BASE + (manager.count() as u64 * STACK_OFFSET);
 
         manager.create(entry_point, stack_addr, attributes)
     }

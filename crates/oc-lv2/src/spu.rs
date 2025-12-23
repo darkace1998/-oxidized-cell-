@@ -5,6 +5,12 @@ use oc_core::error::KernelError;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+/// Maximum number of SPU threads per thread group
+const MAX_SPU_THREADS: u32 = 6;
+
+/// SPU local storage size
+const SPU_LS_SIZE: u32 = 256 * 1024; // 256KB
+
 /// SPU thread group attributes
 #[derive(Debug, Clone)]
 pub struct SpuThreadGroupAttributes {
@@ -201,7 +207,7 @@ pub mod syscalls {
         num_threads: u32,
         priority: i32,
     ) -> Result<ObjectId, KernelError> {
-        if num_threads == 0 || num_threads > 6 {
+        if num_threads == 0 || num_threads > MAX_SPU_THREADS {
             return Err(KernelError::ResourceLimit);
         }
 
@@ -266,7 +272,7 @@ pub mod syscalls {
         // Create a simple image with just the entry point
         let image = SpuImage {
             entry_point,
-            local_storage_size: 256 * 1024, // 256KB
+            local_storage_size: SPU_LS_SIZE,
             segments: Vec::new(),
         };
 
