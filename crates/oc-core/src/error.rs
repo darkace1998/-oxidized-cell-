@@ -72,6 +72,9 @@ pub enum PpuError {
 
     #[error("Trap at 0x{addr:08x}")]
     Trap { addr: u32 },
+
+    #[error("Breakpoint hit at 0x{addr:08x}")]
+    Breakpoint { addr: u64 },
 }
 
 /// SPU (Synergistic Processing Unit) errors

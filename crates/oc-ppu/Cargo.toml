@@ -12,5 +12,6 @@ oc-memory.workspace = true
 tracing.workspace = true
 bitflags.workspace = true
 bytemuck.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]

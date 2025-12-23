@@ -4,26 +4,165 @@
 //! instructions to the appropriate handlers in the instruction modules.
 
 use std::sync::Arc;
+use std::collections::HashSet;
+use parking_lot::RwLock;
 use oc_memory::MemoryManager;
 use oc_core::error::PpuError;
 use crate::decoder::{PpuDecoder, InstructionForm};
 use crate::thread::PpuThread;
 use crate::instructions::{float, system, vector};
 
+/// Breakpoint type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakpointType {
+    /// Unconditional breakpoint - always breaks
+    Unconditional,
+    /// Conditional breakpoint - breaks when condition is met
+    Conditional(BreakpointCondition),
+}
+
+/// Breakpoint condition
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakpointCondition {
+    /// Break when GPR equals value
+    GprEquals { reg: usize, value: u64 },
+    /// Break when instruction count reaches value
+    InstructionCount { count: u64 },
+}
+
+/// Breakpoint information
+#[derive(Debug, Clone)]
+pub struct Breakpoint {
+    /// Address of the breakpoint
+    pub addr: u64,
+    /// Type of breakpoint
+    pub bp_type: BreakpointType,
+    /// Whether the breakpoint is enabled
+    pub enabled: bool,
+    /// Hit count
+    pub hit_count: u64,
+}
+
 /// PPU interpreter for instruction execution
 pub struct PpuInterpreter {
     /// Memory manager
     memory: Arc<MemoryManager>,
+    /// Breakpoints (address -> breakpoint)
+    breakpoints: RwLock<HashSet<u64>>,
+    /// Breakpoint details
+    breakpoint_details: RwLock<std::collections::HashMap<u64, Breakpoint>>,
+    /// Total instruction count (for conditional breakpoints)
+    instruction_count: parking_lot::Mutex<u64>,
 }
 
 impl PpuInterpreter {
     /// Create a new PPU interpreter
     pub fn new(memory: Arc<MemoryManager>) -> Self {
-        Self { memory }
+        Self {
+            memory,
+            breakpoints: RwLock::new(HashSet::new()),
+            breakpoint_details: RwLock::new(std::collections::HashMap::new()),
+            instruction_count: parking_lot::Mutex::new(0),
+        }
+    }
+
+    /// Add a breakpoint at the specified address
+    pub fn add_breakpoint(&self, addr: u64, bp_type: BreakpointType) {
+        self.breakpoints.write().insert(addr);
+        self.breakpoint_details.write().insert(
+            addr,
+            Breakpoint {
+                addr,
+                bp_type,
+                enabled: true,
+                hit_count: 0,
+            },
+        );
+    }
+
+    /// Remove a breakpoint at the specified address
+    pub fn remove_breakpoint(&self, addr: u64) {
+        self.breakpoints.write().remove(&addr);
+        self.breakpoint_details.write().remove(&addr);
+    }
+
+    /// Enable a breakpoint
+    pub fn enable_breakpoint(&self, addr: u64) {
+        if let Some(bp) = self.breakpoint_details.write().get_mut(&addr) {
+            bp.enabled = true;
+        }
+    }
+
+    /// Disable a breakpoint
+    pub fn disable_breakpoint(&self, addr: u64) {
+        if let Some(bp) = self.breakpoint_details.write().get_mut(&addr) {
+            bp.enabled = false;
+        }
+    }
+
+    /// Clear all breakpoints
+    pub fn clear_breakpoints(&self) {
+        self.breakpoints.write().clear();
+        self.breakpoint_details.write().clear();
+    }
+
+    /// Get all breakpoints
+    pub fn get_breakpoints(&self) -> Vec<Breakpoint> {
+        self.breakpoint_details
+            .read()
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    /// Check if we should break at this address
+    #[inline]
+    fn should_break(&self, thread: &PpuThread) -> bool {
+        let pc = thread.pc();
+        
+        // Fast path: check if there's a breakpoint at this address
+        if !self.breakpoints.read().contains(&pc) {
+            return false;
+        }
+
+        // Check breakpoint condition
+        let details = self.breakpoint_details.read();
+        if let Some(bp) = details.get(&pc) {
+            if !bp.enabled {
+                return false;
+            }
+
+            match bp.bp_type {
+                BreakpointType::Unconditional => true,
+                BreakpointType::Conditional(condition) => match condition {
+                    BreakpointCondition::GprEquals { reg, value } => {
+                        thread.gpr(reg) == value
+                    }
+                    BreakpointCondition::InstructionCount { count } => {
+                        *self.instruction_count.lock() >= count
+                    }
+                },
+            }
+        } else {
+            false
+        }
     }
 
     /// Execute a single instruction
     pub fn step(&self, thread: &mut PpuThread) -> Result<(), PpuError> {
+        // Check for breakpoints before execution
+        if self.should_break(thread) {
+            // Update hit count
+            let pc = thread.pc();
+            if let Some(bp) = self.breakpoint_details.write().get_mut(&pc) {
+                bp.hit_count += 1;
+            }
+            return Err(PpuError::Breakpoint { addr: pc });
+        }
+
+        // Increment instruction count for conditional breakpoints
+        *self.instruction_count.lock() += 1;
+
         // Fetch instruction
         let pc = thread.pc() as u32;
         let opcode = self.memory.read_be32(pc).map_err(|_| PpuError::InvalidInstruction {
@@ -40,7 +179,18 @@ impl PpuInterpreter {
         Ok(())
     }
 
+    /// Get the current instruction count
+    pub fn instruction_count(&self) -> u64 {
+        *self.instruction_count.lock()
+    }
+
+    /// Reset the instruction count
+    pub fn reset_instruction_count(&self) {
+        *self.instruction_count.lock() = 0;
+    }
+
     /// Execute a decoded instruction
+    #[inline]
     fn execute(&self, thread: &mut PpuThread, opcode: u32, decoded: crate::decoder::DecodedInstruction) -> Result<(), PpuError> {
         match decoded.form {
             InstructionForm::D => self.execute_d_form(thread, opcode, decoded.op),
@@ -61,7 +211,8 @@ impl PpuInterpreter {
         }
     }
 
-    /// Execute D-form instructions
+    /// Execute D-form instructions (most common form - optimized hot path)
+    #[inline]
     fn execute_d_form(&self, thread: &mut PpuThread, opcode: u32, op: u8) -> Result<(), PpuError> {
         let (rt, ra, d) = PpuDecoder::d_form(opcode);
         let d = d as i64;
@@ -167,6 +318,7 @@ impl PpuInterpreter {
     }
 
     /// Execute I-form instructions (branches)
+    #[inline]
     fn execute_i_form(&self, thread: &mut PpuThread, opcode: u32) -> Result<(), PpuError> {
         let (li, aa, lk) = PpuDecoder::i_form(opcode);
 
@@ -185,6 +337,7 @@ impl PpuInterpreter {
     }
 
     /// Execute B-form instructions (conditional branches)
+    #[inline]
     fn execute_b_form(&self, thread: &mut PpuThread, opcode: u32) -> Result<(), PpuError> {
         let (bo, bi, bd, aa, lk) = PpuDecoder::b_form(opcode);
 
@@ -222,6 +375,7 @@ impl PpuInterpreter {
     }
 
     /// Execute X-form instructions
+    #[inline]
     fn execute_x_form(&self, thread: &mut PpuThread, opcode: u32, xo: u16) -> Result<(), PpuError> {
         let (rt, ra, rb, _, rc) = PpuDecoder::x_form(opcode);
 
@@ -314,6 +468,43 @@ impl PpuInterpreter {
                         tracing::warn!("Unimplemented mtspr SPR {} at 0x{:08x}", spr, thread.pc());
                     }
                 }
+            }
+            // XO-form arithmetic instructions (dispatched as X-form by decoder)
+            // Note: These have a 10-bit XO in the decoder, but only 9-bit in the instruction
+            // So we need to mask to 9 bits for matching
+            _ if (xo & 0x1FF) == 266 => {
+                // add - Add
+                let (rt, ra, rb, _, _) = PpuDecoder::x_form(opcode);
+                let oe = ((opcode >> 10) & 1) != 0;
+                let rc = (opcode & 1) != 0;
+                
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let result = a.wrapping_add(b);
+                thread.set_gpr(rt as usize, result);
+                if oe {
+                    let overflow = ((a as i64).overflowing_add(b as i64)).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            _ if (xo & 0x1FF) == 40 => {
+                // subf - Subtract From
+                let (rt, ra, rb, _, _) = PpuDecoder::x_form(opcode);
+                let oe = ((opcode >> 10) & 1) != 0;
+                let rc = (opcode & 1) != 0;
+                
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let result = b.wrapping_sub(a);
+                thread.set_gpr(rt as usize, result);
+                if oe {
+                    let overflow = ((b as i64).overflowing_sub(a as i64)).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
             }
             _ => {
                 tracing::warn!("Unimplemented X-form xo {} at 0x{:08x}", xo, thread.pc());
@@ -558,6 +749,7 @@ impl PpuInterpreter {
     }
 
     /// Update CR0 based on result (for Rc=1 instructions)
+    #[inline]
     fn update_cr0(&self, thread: &mut PpuThread, value: u64) {
         let value = value as i64;
         let c = if value < 0 { 0b1000 } else if value > 0 { 0b0100 } else { 0b0010 };
@@ -566,6 +758,7 @@ impl PpuInterpreter {
     }
 
     /// Generate 32-bit mask for rotate instructions
+    #[inline]
     fn generate_mask_32(mb: u8, me: u8) -> u32 {
         let mb = mb as u32;
         let me = me as u32;
@@ -1065,5 +1258,329 @@ mod tests {
         assert_eq!(f32::from_bits(result[1]), 7.0);
         assert_eq!(f32::from_bits(result[2]), 3.0);
         assert_eq!(f32::from_bits(result[3]), 6.0);
+    }
+
+    // ===== Edge Case Tests =====
+
+    #[test]
+    fn test_addi_overflow() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Test overflow with max i64 value
+        thread.set_gpr(4, i64::MAX as u64);
+        
+        // addi r3, r4, 1 (should wrap around)
+        let opcode = 0x38640001u32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Result should wrap to min value (wrapping add)
+        assert_eq!(thread.gpr(3) as i64, i64::MIN);
+    }
+
+    #[test]
+    fn test_addi_ra_zero_special_case() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set r0 to a value (should be ignored)
+        thread.set_gpr(0, 999);
+        
+        // addi r3, r0, 42 (ra=0 means load immediate, not add to r0)
+        let opcode = 0x3860002Au32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 42);
+    }
+
+    #[test]
+    fn test_divw_by_zero() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Setup: divide by zero
+        thread.set_gpr(4, 100);
+        thread.set_gpr(5, 0);
+        
+        // divw r3, r4, r5 with OE=0 (no overflow exception)
+        // XO-form: op=31, rt=3, ra=4, rb=5, oe=0, xo=491, rc=0
+        let opcode = 0x7C64_2BD6u32;
+        
+        // Write instruction and execute
+        interpreter.memory.write_be32(0x2000_0000, opcode).unwrap();
+        interpreter.step(&mut thread).unwrap();
+        
+        // Result should be 0 on divide by zero
+        assert_eq!(thread.gpr(3), 0);
+    }
+
+    #[test]
+    fn test_divw_overflow() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Setup: i32::MIN / -1 causes overflow
+        thread.set_gpr(4, i32::MIN as u64);
+        thread.set_gpr(5, (-1i32) as u32 as u64);
+        
+        // divw r3, r4, r5 with OE=0
+        let opcode = 0x7C64_2BD6u32;
+        interpreter.memory.write_be32(0x2000_0000, opcode).unwrap();
+        interpreter.step(&mut thread).unwrap();
+        
+        // Result should be 0 on overflow
+        assert_eq!(thread.gpr(3), 0);
+    }
+
+    #[test]
+    fn test_branch_boundary() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Branch forward by a reasonable offset (not near 32-bit boundary for test safety)
+        let offset = 0x1000i32;
+        
+        // Create branch instruction
+        let li = ((offset >> 2) & 0x00FFFFFF) as u32;
+        let opcode = 0x48000000u32 | (li << 2);
+        
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        assert_eq!(thread.pc(), 0x2000_0000 + offset as u64);
+    }
+
+    #[test]
+    fn test_cmp_signed_vs_unsigned() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Test signed comparison with negative value
+        thread.set_gpr(4, (-10i64) as u64);
+        thread.set_gpr(5, 10u64);
+        
+        // cmp cr0, 0, r4, r5 (signed comparison, 64-bit)
+        // X-form: op=31, bf=0, l=1, ra=4, rb=5, xo=0
+        let opcode = 0x7C04_2800u32 | (1 << 21); // l=1 for 64-bit
+        interpreter.memory.write_be32(0x2000_0000, opcode).unwrap();
+        interpreter.step(&mut thread).unwrap();
+        
+        // -10 < 10, so LT bit should be set in CR0
+        let cr0 = thread.get_cr_field(0);
+        assert_eq!(cr0 & 0b1000, 0b1000); // LT bit set
+    }
+
+    #[test]
+    fn test_cmpl_unsigned() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Test unsigned comparison
+        thread.set_gpr(4, (-10i64) as u64); // Large unsigned value
+        thread.set_gpr(5, 10u64);
+        
+        // cmpl cr0, 1, r4, r5 (unsigned comparison, 64-bit)
+        // X-form: op=31, bf=0, l=1, ra=4, rb=5, xo=32
+        let opcode = 0x7C04_2840u32 | (1 << 21); // l=1 for 64-bit
+        interpreter.memory.write_be32(0x2000_0000, opcode).unwrap();
+        interpreter.step(&mut thread).unwrap();
+        
+        // As unsigned, -10 > 10, so GT bit should be set
+        let cr0 = thread.get_cr_field(0);
+        assert_eq!(cr0 & 0b0100, 0b0100); // GT bit set
+    }
+
+    #[test]
+    fn test_rotate_mask_edge_cases() {
+        // Test mask generation
+        // When mb <= me: mask includes bits mb through me
+        // When mb > me: mask wraps around
+        
+        // Test full mask (mb=0, me=31)
+        assert_eq!(PpuInterpreter::generate_mask_32(0, 31), 0xFFFFFFFF);
+        
+        // Test single bit mask at bit 31 (mb=31, me=31)
+        assert_eq!(PpuInterpreter::generate_mask_32(31, 31), 0x00000001);
+        
+        // Test single bit mask at bit 0 (mb=0, me=0)
+        assert_eq!(PpuInterpreter::generate_mask_32(0, 0), 0x80000000);
+        
+        // Test contiguous mask (mb=8, me=15) - bits 8-15
+        assert_eq!(PpuInterpreter::generate_mask_32(8, 15), 0x00FF0000);
+    }
+
+    #[test]
+    fn test_rlwinm_extract_bits() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Test basic rotate and mask (simplified version)
+        thread.set_gpr(4, 0xABCD1234);
+        
+        // rlwinm r3, r4, 8, 24, 31 - rotate left 8 bits and mask bits 24-31
+        // This should give us the second byte rotated to the last position
+        // M-form: op=21, rs=4, ra=3, sh=8, mb=24, me=31, rc=0
+        let opcode = 0x5483_443Eu32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // After rotating 0xABCD1234 left by 8: 0xCD1234AB
+        // Mask bits 24-31: 0x000000AB
+        assert_eq!(thread.gpr(3) & 0xFF, 0xAB);
+    }
+
+    #[test]
+    fn test_overflow_flag_propagation() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Simple test for overflow detection
+        // Test with i64::MAX + 1 which should overflow
+        thread.set_gpr(5, 0x7FFFFFFFFFFFFFFF_u64); // i64::MAX
+        thread.set_gpr(6, 1);
+        
+        // add r4, r5, r6 with OE=1 (enable overflow detection)
+        let opcode = 0x7C85_3614u32;
+        interpreter.memory.write_be32(0x2000_0000, opcode).unwrap();
+        interpreter.step(&mut thread).unwrap();
+        
+        // Overflow should be detected (i64::MAX + 1 overflows in signed arithmetic)
+        assert!(thread.get_xer_ov(), "OV bit should be set on overflow");
+        assert!(thread.get_xer_so(), "SO bit should be set on overflow");
+    }
+
+    #[test]
+    fn test_conditional_branch_ctr() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set CTR to 5
+        thread.regs.ctr = 5;
+        
+        // bdnz 0x40 (branch if --CTR != 0)
+        // BO=16 (decrement CTR, branch if CTR != 0)
+        let opcode = 0x42000040u32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // CTR should be decremented
+        assert_eq!(thread.regs.ctr, 4);
+        // Should have branched
+        assert_eq!(thread.pc(), 0x2000_0040);
+    }
+
+    #[test]
+    fn test_conditional_branch_no_ctr_decrement() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set CTR to 5
+        thread.regs.ctr = 5;
+        
+        // Branch with BO bit 2 set (don't modify CTR)
+        // BO=20 (ignore CTR)
+        let opcode = 0x42800040u32; // bc with BO=20
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // CTR should NOT be decremented
+        assert_eq!(thread.regs.ctr, 5);
+    }
+
+    // ===== Breakpoint Tests =====
+
+    #[test]
+    fn test_breakpoint_unconditional() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Add breakpoint at current PC
+        interpreter.add_breakpoint(0x2000_0000, BreakpointType::Unconditional);
+        
+        // Write a simple instruction
+        interpreter.memory.write_be32(0x2000_0000, 0x38600064).unwrap();
+        
+        // Step should hit breakpoint
+        let result = interpreter.step(&mut thread);
+        assert!(matches!(result, Err(PpuError::Breakpoint { addr: 0x2000_0000 })));
+    }
+
+    #[test]
+    fn test_breakpoint_conditional_gpr() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Add conditional breakpoint that triggers when r3 == 42
+        interpreter.add_breakpoint(
+            0x2000_0000,
+            BreakpointType::Conditional(BreakpointCondition::GprEquals {
+                reg: 3,
+                value: 42,
+            }),
+        );
+        
+        thread.set_gpr(3, 41);
+        interpreter.memory.write_be32(0x2000_0000, 0x38600064).unwrap();
+        
+        // Should not break (r3 != 42)
+        assert!(interpreter.step(&mut thread).is_ok());
+        
+        // Set r3 to 42
+        thread.set_pc(0x2000_0000);
+        thread.set_gpr(3, 42);
+        
+        // Should break now
+        let result = interpreter.step(&mut thread);
+        assert!(matches!(result, Err(PpuError::Breakpoint { .. })));
+    }
+
+    #[test]
+    fn test_breakpoint_disable() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Add and then disable breakpoint
+        interpreter.add_breakpoint(0x2000_0000, BreakpointType::Unconditional);
+        interpreter.disable_breakpoint(0x2000_0000);
+        
+        interpreter.memory.write_be32(0x2000_0000, 0x38600064).unwrap();
+        
+        // Should not break (disabled)
+        assert!(interpreter.step(&mut thread).is_ok());
+    }
+
+    #[test]
+    fn test_breakpoint_hit_count() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        interpreter.add_breakpoint(0x2000_0000, BreakpointType::Unconditional);
+        interpreter.memory.write_be32(0x2000_0000, 0x38600064).unwrap();
+        
+        // Hit breakpoint once
+        let _ = interpreter.step(&mut thread);
+        
+        // Check hit count
+        let breakpoints = interpreter.get_breakpoints();
+        assert_eq!(breakpoints[0].hit_count, 1);
+    }
+
+    #[test]
+    fn test_instruction_count() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Write some instructions
+        for i in 0..5 {
+            interpreter
+                .memory
+                .write_be32(0x2000_0000 + i * 4, 0x60000000)
+                .unwrap(); // nop
+        }
+        
+        // Execute 3 instructions
+        for _ in 0..3 {
+            let _ = interpreter.step(&mut thread);
+        }
+        
+        assert_eq!(interpreter.instruction_count(), 3);
+        
+        interpreter.reset_instruction_count();
+        assert_eq!(interpreter.instruction_count(), 0);
     }
 }
