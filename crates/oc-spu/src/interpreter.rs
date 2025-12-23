@@ -391,7 +391,6 @@ impl Default for SpuInterpreter {
 mod tests {
     use super::*;
     use oc_memory::MemoryManager;
-    use std::sync::Arc;
 
     fn create_test_thread() -> SpuThread {
         let memory = MemoryManager::new().unwrap();
@@ -415,5 +414,96 @@ mod tests {
         // a rt, ra, rb - add r3, r1, r2 (opcode would be constructed)
         // For now, just verify interpreter creation works
         drop(interpreter);
+    }
+
+    #[test]
+    fn test_shufb_identity() {
+        // Test shufb with identity permutation
+        let mut thread = create_test_thread();
+        let interpreter = SpuInterpreter::new();
+        
+        // Set up source registers (ra=1, rb=2)
+        // Pattern: bytes 0-15 in a, 16-31 in b
+        thread.regs.write_u32x4(1, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        thread.regs.write_u32x4(2, [0x10111213, 0x14151617, 0x18191A1B, 0x1C1D1E1F]);
+        
+        // Control register (rc=3): identity permutation (select bytes 0-15)
+        thread.regs.write_u32x4(3, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        
+        // shufb rt, ra, rb, rc
+        // RRR form: rc=3, rb=2, ra=1, rt=4
+        // Bits: [rc:7][rb:7][ra:7][rt:7] = [3][2][1][4]
+        // Opcode = (3 << 21) | (2 << 14) | (1 << 7) | 4
+        let opcode = (3 << 21) | (2 << 14) | (1 << 7) | 4;
+        
+        interpreter.execute_shufb(&mut thread, opcode).unwrap();
+        
+        // Result should be same as ra (identity permutation)
+        let result = thread.regs.read_u32x4(4);
+        assert_eq!(result, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+    }
+
+    #[test]
+    fn test_shufb_select_from_second() {
+        // Test selecting all bytes from second source (rb)
+        let mut thread = create_test_thread();
+        let interpreter = SpuInterpreter::new();
+        
+        thread.regs.write_u32x4(1, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        thread.regs.write_u32x4(2, [0xAABBCCDD, 0xEEFF0011, 0x22334455, 0x66778899]);
+        
+        // Control: select bytes 0-15 from second source (indices 16-31 map to rb, using 0x10-0x1F)
+        thread.regs.write_u32x4(3, [0x10111213, 0x14151617, 0x18191A1B, 0x1C1D1E1F]);
+        
+        let opcode = (3 << 21) | (2 << 14) | (1 << 7) | 4;
+        interpreter.execute_shufb(&mut thread, opcode).unwrap();
+        
+        let result = thread.regs.read_u32x4(4);
+        assert_eq!(result, [0xAABBCCDD, 0xEEFF0011, 0x22334455, 0x66778899]);
+    }
+
+    #[test]
+    fn test_shufb_special_values() {
+        // Test special control byte values (0xC0-0xDF = 0x00, 0xE0-0xFF = 0xFF)
+        let mut thread = create_test_thread();
+        let interpreter = SpuInterpreter::new();
+        
+        thread.regs.write_u32x4(1, [0x12345678, 0x12345678, 0x12345678, 0x12345678]);
+        thread.regs.write_u32x4(2, [0x12345678, 0x12345678, 0x12345678, 0x12345678]);
+        
+        // Control: 0xC0-0xDF = 0x00, 0xE0-0xFF = 0xFF
+        thread.regs.write_u32x4(3, [0xC0C0C0C0, 0xE0E0E0E0, 0xD0D0D0D0, 0xFFFFFFFF]);
+        
+        let opcode = (3 << 21) | (2 << 14) | (1 << 7) | 4;
+        interpreter.execute_shufb(&mut thread, opcode).unwrap();
+        
+        let result = thread.regs.read_u32x4(4);
+        // 0xC0 should produce 0x00 (C0-DF range)
+        assert_eq!(result[0], 0x00000000);
+        // 0xE0 should produce 0xFF (E0-FF range)
+        assert_eq!(result[1], 0xFFFFFFFF);
+        // 0xD0 should produce 0x00 (C0-DF range)
+        assert_eq!(result[2], 0x00000000);
+        // 0xFF should produce 0xFF
+        assert_eq!(result[3], 0xFFFFFFFF);
+    }
+
+    #[test]
+    fn test_shufb_reverse_bytes() {
+        // Test reversing byte order
+        let mut thread = create_test_thread();
+        let interpreter = SpuInterpreter::new();
+        
+        thread.regs.write_u32x4(1, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        thread.regs.write_u32x4(2, [0, 0, 0, 0]);
+        
+        // Control: reverse byte order (15, 14, 13, ... 0)
+        thread.regs.write_u32x4(3, [0x0F0E0D0C, 0x0B0A0908, 0x07060504, 0x03020100]);
+        
+        let opcode = (3 << 21) | (2 << 14) | (1 << 7) | 4;
+        interpreter.execute_shufb(&mut thread, opcode).unwrap();
+        
+        let result = thread.regs.read_u32x4(4);
+        assert_eq!(result, [0x0F0E0D0C, 0x0B0A0908, 0x07060504, 0x03020100]);
     }
 }

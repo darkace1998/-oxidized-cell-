@@ -1,10 +1,14 @@
 //! PPU interpreter implementation
+//!
+//! This module implements the PPU instruction interpreter, dispatching decoded
+//! instructions to the appropriate handlers in the instruction modules.
 
 use std::sync::Arc;
 use oc_memory::MemoryManager;
 use oc_core::error::PpuError;
 use crate::decoder::{PpuDecoder, InstructionForm};
 use crate::thread::PpuThread;
+use crate::instructions::{float, system, vector};
 
 /// PPU interpreter for instruction execution
 pub struct PpuInterpreter {
@@ -46,6 +50,8 @@ impl PpuInterpreter {
             InstructionForm::XO => self.execute_xo_form(thread, opcode, decoded.xo),
             InstructionForm::XL => self.execute_xl_form(thread, opcode, decoded.xo),
             InstructionForm::M => self.execute_m_form(thread, opcode, decoded.op),
+            InstructionForm::A => self.execute_a_form(thread, opcode, decoded.xo),
+            InstructionForm::VA => self.execute_va_form(thread, opcode),
             InstructionForm::SC => self.execute_sc(thread, opcode),
             _ => {
                 tracing::warn!("Unimplemented instruction form: {:?} at 0x{:08x}", decoded.form, thread.pc());
@@ -382,10 +388,11 @@ impl PpuInterpreter {
         Ok(())
     }
 
-    /// Execute XL-form instructions (branch to LR/CTR)
+    /// Execute XL-form instructions (branch to LR/CTR and CR logical)
     fn execute_xl_form(&self, thread: &mut PpuThread, opcode: u32, xo: u16) -> Result<(), PpuError> {
         let bo = ((opcode >> 21) & 0x1F) as u8;
         let bi = ((opcode >> 16) & 0x1F) as u8;
+        let bb = ((opcode >> 11) & 0x1F) as u8;
         let lk = (opcode & 1) != 0;
 
         match xo {
@@ -433,6 +440,58 @@ impl PpuInterpreter {
                 } else {
                     thread.advance_pc();
                 }
+            }
+            // mcrf - Move Condition Register Field
+            0 => {
+                let bf = (bo >> 2) & 7;
+                let bfa = (bi >> 2) & 7;
+                system::mcrf(thread, bf, bfa);
+                thread.advance_pc();
+            }
+            // crand - Condition Register AND
+            257 => {
+                system::crand(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // cror - Condition Register OR
+            449 => {
+                system::cror(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // crxor - Condition Register XOR
+            193 => {
+                system::crxor(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // crnand - Condition Register NAND
+            225 => {
+                system::crnand(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // crnor - Condition Register NOR
+            33 => {
+                system::crnor(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // creqv - Condition Register EQV (XNOR)
+            289 => {
+                system::creqv(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // crandc - Condition Register AND with Complement
+            129 => {
+                system::crandc(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // crorc - Condition Register OR with Complement
+            417 => {
+                system::crorc(thread, bo, bi, bb);
+                thread.advance_pc();
+            }
+            // isync - Instruction Synchronize
+            150 => {
+                system::isync(thread);
+                thread.advance_pc();
             }
             _ => {
                 tracing::warn!("Unimplemented XL-form xo {} at 0x{:08x}", xo, thread.pc());
@@ -516,6 +575,104 @@ impl PpuInterpreter {
             (u32::MAX >> mb) | (u32::MAX << (31 - me))
         }
     }
+
+    /// Execute A-form instructions (floating-point multiply-add)
+    fn execute_a_form(&self, thread: &mut PpuThread, opcode: u32, xo: u16) -> Result<(), PpuError> {
+        let frt = ((opcode >> 21) & 0x1F) as usize;
+        let fra = ((opcode >> 16) & 0x1F) as usize;
+        let frb = ((opcode >> 11) & 0x1F) as usize;
+        let frc = ((opcode >> 6) & 0x1F) as usize;
+        let rc = (opcode & 1) != 0;
+        let primary = (opcode >> 26) & 0x3F;
+
+        // Get operand values
+        let a = thread.fpr(fra);
+        let b = thread.fpr(frb);
+        let c = thread.fpr(frc);
+
+        let result = match (primary, xo) {
+            // fmadd - Floating Multiply-Add (Double)
+            (63, 29) => float::fmadd(a, c, b),
+            // fmsub - Floating Multiply-Subtract (Double)
+            (63, 28) => float::fmsub(a, c, b),
+            // fnmadd - Floating Negative Multiply-Add (Double)
+            (63, 31) => float::fnmadd(a, c, b),
+            // fnmsub - Floating Negative Multiply-Subtract (Double)
+            (63, 30) => float::fnmsub(a, c, b),
+            // fmadds - Floating Multiply-Add Single
+            (59, 29) => float::frsp(float::fmadd(a, c, b)),
+            // fmsubs - Floating Multiply-Subtract Single
+            (59, 28) => float::frsp(float::fmsub(a, c, b)),
+            // fnmadds - Floating Negative Multiply-Add Single
+            (59, 31) => float::frsp(float::fnmadd(a, c, b)),
+            // fnmsubs - Floating Negative Multiply-Subtract Single
+            (59, 30) => float::frsp(float::fnmsub(a, c, b)),
+            // fmul - Floating Multiply
+            (63, 25) => a * c,
+            // fmuls - Floating Multiply Single
+            (59, 25) => float::frsp(a * c),
+            // fadd - Floating Add
+            (63, 21) => a + b,
+            // fadds - Floating Add Single
+            (59, 21) => float::frsp(a + b),
+            // fsub - Floating Subtract
+            (63, 20) => a - b,
+            // fsubs - Floating Subtract Single
+            (59, 20) => float::frsp(a - b),
+            // fdiv - Floating Divide
+            (63, 18) => a / b,
+            // fdivs - Floating Divide Single
+            (59, 18) => float::frsp(a / b),
+            // fsel - Floating Select
+            (63, 23) => float::fsel(a, b, c),
+            _ => {
+                tracing::warn!("Unimplemented A-form xo {} at 0x{:08x}", xo, thread.pc());
+                0.0
+            }
+        };
+
+        thread.set_fpr(frt, result);
+        float::update_fprf(thread, result);
+        
+        if rc {
+            float::update_cr1(thread);
+        }
+
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute VA-form instructions (vector three-operand)
+    fn execute_va_form(&self, thread: &mut PpuThread, opcode: u32) -> Result<(), PpuError> {
+        let vrt = ((opcode >> 21) & 0x1F) as usize;
+        let vra = ((opcode >> 16) & 0x1F) as usize;
+        let vrb = ((opcode >> 11) & 0x1F) as usize;
+        let vrc = ((opcode >> 6) & 0x1F) as usize;
+        let xo = (opcode & 0x3F) as u8;
+
+        let a = thread.vr(vra);
+        let b = thread.vr(vrb);
+        let c = thread.vr(vrc);
+
+        let result = match xo {
+            // vperm - Vector Permute
+            0x2B => vector::vperm(a, b, c),
+            // vmaddfp - Vector Multiply-Add Floating-Point
+            0x2E => vector::vmaddfp(a, c, b),
+            // vnmsubfp - Vector Negative Multiply-Subtract Floating-Point
+            0x2F => vector::vnmsubfp(a, c, b),
+            // vsel - Vector Select
+            0x2A => vector::vsel(a, b, c),
+            _ => {
+                tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo, thread.pc());
+                [0u32; 4]
+            }
+        };
+
+        thread.set_vr(vrt, result);
+        thread.advance_pc();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -527,6 +684,13 @@ mod tests {
         let interpreter = PpuInterpreter::new(memory.clone());
         let thread = PpuThread::new(0, memory);
         (interpreter, thread)
+    }
+
+    /// Helper to write an instruction to memory and execute it
+    fn execute_instruction(interpreter: &PpuInterpreter, thread: &mut PpuThread, opcode: u32) -> Result<(), PpuError> {
+        let pc = thread.pc() as u32;
+        interpreter.memory.write_be32(pc, opcode).unwrap();
+        interpreter.step(thread)
     }
 
     #[test]
@@ -541,5 +705,365 @@ mod tests {
         assert_eq!(PpuInterpreter::generate_mask_32(0, 31), 0xFFFFFFFF);
         assert_eq!(PpuInterpreter::generate_mask_32(16, 31), 0x0000FFFF);
         assert_eq!(PpuInterpreter::generate_mask_32(0, 15), 0xFFFF0000);
+    }
+
+    // ===== ADDI Tests =====
+    
+    #[test]
+    fn test_addi_basic() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // addi r3, r0, 100  (opcode 14, rt=3, ra=0, simm=100)
+        // When ra=0, addi loads the immediate directly
+        let opcode = 0x38600064u32; // addi r3, r0, 100
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 100);
+        assert_eq!(thread.pc(), 0x2000_0004);
+    }
+
+    #[test]
+    fn test_addi_with_register() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        thread.set_gpr(4, 1000);
+        
+        // addi r3, r4, 50  (r3 = r4 + 50 = 1050)
+        let opcode = 0x38640032u32; // addi r3, r4, 50
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 1050);
+    }
+
+    #[test]
+    fn test_addi_negative_immediate() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        thread.set_gpr(5, 100);
+        
+        // addi r3, r5, -50  (r3 = r5 - 50 = 50)
+        // -50 in 16-bit signed = 0xFFCE
+        let opcode = 0x3865FFCEu32; // addi r3, r5, -50
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 50);
+    }
+
+    // ===== LWZ/STW Tests =====
+    
+    #[test]
+    fn test_stw_lwz_basic() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Store value to memory
+        thread.set_gpr(3, 0xDEADBEEF);
+        thread.set_gpr(4, 0x2000_1000); // Base address
+        
+        // stw r3, 0(r4)
+        let stw_opcode = 0x90640000u32; // stw r3, 0(r4)
+        execute_instruction(&interpreter, &mut thread, stw_opcode).unwrap();
+        
+        // Clear r3 and load back
+        thread.set_gpr(3, 0);
+        
+        // lwz r3, 0(r4)
+        let lwz_opcode = 0x80640000u32; // lwz r3, 0(r4)
+        execute_instruction(&interpreter, &mut thread, lwz_opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 0xDEADBEEF);
+    }
+
+    #[test]
+    fn test_lwz_stw_with_displacement() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        thread.set_gpr(3, 0x12345678);
+        thread.set_gpr(4, 0x2000_1000);
+        
+        // stw r3, 16(r4) - store at base + 16
+        let stw_opcode = 0x90640010u32; // stw r3, 16(r4)
+        execute_instruction(&interpreter, &mut thread, stw_opcode).unwrap();
+        
+        thread.set_gpr(3, 0);
+        
+        // lwz r3, 16(r4) - load from base + 16
+        let lwz_opcode = 0x80640010u32; // lwz r3, 16(r4)
+        execute_instruction(&interpreter, &mut thread, lwz_opcode).unwrap();
+        
+        assert_eq!(thread.gpr(3), 0x12345678);
+    }
+
+    // ===== Branch Tests =====
+    
+    #[test]
+    fn test_branch_unconditional() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // b 0x100 (relative branch forward 0x100 bytes)
+        let opcode = 0x48000100u32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.pc(), 0x2000_0100);
+    }
+
+    #[test]
+    fn test_branch_with_link() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // bl 0x200 (branch and link)
+        let opcode = 0x48000201u32; // bl 0x200
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.pc(), 0x2000_0200);
+        assert_eq!(thread.regs.lr, 0x2000_0004); // Return address
+    }
+
+    #[test]
+    fn test_branch_backward() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_1000);
+        
+        // b -0x100 (branch backward)
+        // -0x100 in 26-bit signed, left-shifted by 2
+        let opcode = 0x4BFFFF00u32; // b -0x100
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.pc(), 0x2000_0F00);
+    }
+
+    // ===== Conditional Branch (bc) Tests =====
+    
+    #[test]
+    fn test_bc_branch_if_equal() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set CR0 EQ bit (bit 2 of CR0, which is bit 30 in CR register)
+        thread.set_cr_field(0, 0b0010); // EQ set
+        
+        // beq 0x40 (branch if CR0 EQ set)
+        // BO=01100 (branch if condition true), BI=2 (CR0 EQ)
+        let opcode = 0x41820040u32; // beq 0x40
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.pc(), 0x2000_0040);
+    }
+
+    #[test]
+    fn test_bc_no_branch_if_not_equal() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set CR0 to GT (not equal)
+        thread.set_cr_field(0, 0b0100); // GT set, EQ clear
+        
+        // beq 0x40 (should NOT branch since EQ is not set)
+        let opcode = 0x41820040u32; // beq 0x40
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Should just advance PC since condition is false
+        assert_eq!(thread.pc(), 0x2000_0004);
+    }
+
+    #[test]
+    fn test_bc_branch_if_less_than() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set CR0 LT bit
+        thread.set_cr_field(0, 0b1000); // LT set
+        
+        // blt 0x80 (branch if less than)
+        // BO=01100 (branch if condition true), BI=0 (CR0 LT)
+        let opcode = 0x41800080u32; // blt 0x80
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        assert_eq!(thread.pc(), 0x2000_0080);
+    }
+
+    // ===== CR Logical Operations Tests =====
+    
+    #[test]
+    fn test_crand() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set bits 0 and 1 of CR (bits 31 and 30 in position terms)
+        thread.regs.cr = 0xC000_0000; // bits 0 and 1 set
+        
+        // crand bt=2, ba=0, bb=1 (CR[2] = CR[0] & CR[1])
+        // XL-form: [0:5]=19, [6:10]=bt=2, [11:15]=ba=0, [16:20]=bb=1, [21:30]=xo=257, [31]=0
+        // Binary: 010011 00010 00000 00001 0100000001 0
+        let opcode = 0x4C40_0A02u32; // crand 2, 0, 1
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Bit 2 should be set (1 & 1 = 1)
+        assert!((thread.regs.cr >> 29) & 1 == 1);
+    }
+
+    #[test]
+    fn test_cror() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set only bit 0
+        thread.regs.cr = 0x8000_0000;
+        
+        // cror bt=2, ba=0, bb=1 (CR[2] = CR[0] | CR[1])
+        // XL-form: [0:5]=19, [6:10]=bt=2, [11:15]=ba=0, [16:20]=bb=1, [21:30]=xo=449, [31]=0
+        // xo=449 in bits 21-30, shifted: 449 << 1 = 0x382
+        // Binary: 010011 00010 00000 00001 0111000001 0
+        let opcode = 0x4C40_0B82u32; // cror 2, 0, 1
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Bit 2 should be set (1 | 0 = 1)
+        assert!((thread.regs.cr >> 29) & 1 == 1);
+    }
+
+    #[test]
+    fn test_crxor_clear() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        thread.regs.cr = 0xFFFF_FFFF;
+        
+        // crxor bt=0, ba=0, bb=0 (CR[0] = CR[0] ^ CR[0] = 0)
+        // XL-form: [0:5]=19, [6:10]=bt=0, [11:15]=ba=0, [16:20]=bb=0, [21:30]=xo=193, [31]=0
+        // xo=193 = 0b0011000001
+        // Binary: 010011 00000 00000 00000 0011000001 0
+        let opcode = 0x4C00_0182u32; // crxor 0, 0, 0
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Bit 0 should be cleared
+        assert!((thread.regs.cr >> 31) & 1 == 0);
+    }
+
+    // ===== FMADD Tests =====
+    
+    #[test]
+    fn test_fmadd_basic() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // fmadd f3, f1, f2, f4 => f3 = (f1 * f2) + f4
+        // A-form: fmadd frt, fra, frc, frb  => frt = (fra * frc) + frb
+        // So fmadd f3, f1, f2, f4 means f3 = (f1 * f2) + f4
+        thread.set_fpr(1, 2.0);  // fra
+        thread.set_fpr(2, 3.0);  // frc
+        thread.set_fpr(4, 4.0);  // frb
+        
+        // fmadd f3, f1, f2, f4
+        // Primary opcode 63 (0x3F), A-form
+        // [0:5]=63, [6:10]=frt=3, [11:15]=fra=1, [16:20]=frb=4, [21:25]=frc=2, [26:30]=xo=29, [31]=rc=0
+        // Binary: 111111 00011 00001 00100 00010 11101 0
+        let opcode = 0xFC61_20BAu32; // fmadd f3, f1, f2, f4
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Result should be (2.0 * 3.0) + 4.0 = 10.0
+        assert_eq!(thread.fpr(3), 10.0);
+    }
+
+    #[test]
+    fn test_fmsub_basic() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // fmsub f3, f1, f2, f4 => f3 = (f1 * f2) - f4
+        thread.set_fpr(1, 5.0);  // fra
+        thread.set_fpr(2, 2.0);  // frc
+        thread.set_fpr(4, 3.0);  // frb
+        
+        // fmsub f3, f1, f2, f4
+        // [0:5]=63, [6:10]=frt=3, [11:15]=fra=1, [16:20]=frb=4, [21:25]=frc=2, [26:30]=xo=28, [31]=rc=0
+        // Binary: 111111 00011 00001 00100 00010 11100 0
+        let opcode = 0xFC61_20B8u32; // fmsub f3, f1, f2, f4
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Result = (5.0 * 2.0) - 3.0 = 7.0
+        assert_eq!(thread.fpr(3), 7.0);
+    }
+
+    // ===== VPERM (Vector Permute) Tests =====
+    
+    #[test]
+    fn test_vperm_identity() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Set up source vectors
+        thread.set_vr(1, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        thread.set_vr(2, [0x10111213, 0x14151617, 0x18191A1B, 0x1C1D1E1F]);
+        
+        // Control vector: identity permutation (0,1,2,3,4,5,6,7,8,9,A,B,C,D,E,F)
+        thread.set_vr(3, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        
+        // vperm v4, v1, v2, v3
+        // VA-form: [0:5]=4, [6:10]=vrt=4, [11:15]=vra=1, [16:20]=vrb=2, [21:25]=vrc=3, [26:31]=xo=43
+        // Binary: 000100 00100 00001 00010 00011 101011
+        let opcode = 0x1081_10EBu32; // vperm v4, v1, v2, v3
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Result should be same as v1 (identity permutation selects first 16 bytes)
+        let result = thread.vr(4);
+        assert_eq!(result, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+    }
+
+    #[test]
+    fn test_vperm_swap_halves() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // Source vectors
+        thread.set_vr(1, [0x00010203, 0x04050607, 0x08090A0B, 0x0C0D0E0F]);
+        thread.set_vr(2, [0x10111213, 0x14151617, 0x18191A1B, 0x1C1D1E1F]);
+        
+        // Control: select bytes 8-15 then 0-7 from first vector
+        thread.set_vr(3, [0x08090A0B, 0x0C0D0E0F, 0x00010203, 0x04050607]);
+        
+        // vperm v4, v1, v2, v3
+        let opcode = 0x1081_10EBu32;
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        // Result: bytes 8-15 followed by 0-7
+        let result = thread.vr(4);
+        assert_eq!(result, [0x08090A0B, 0x0C0D0E0F, 0x00010203, 0x04050607]);
+    }
+
+    #[test]
+    fn test_vmaddfp() {
+        let (interpreter, mut thread) = create_test_env();
+        thread.set_pc(0x2000_0000);
+        
+        // vmaddfp v4, v1, v2, v3 => v4 = (v1 * v2) + v3
+        // VA-form: vmaddfp vrt, vra, vrc, vrb  => (vra * vrc) + vrb
+        let a = [2.0f32.to_bits(), 3.0f32.to_bits(), 4.0f32.to_bits(), 5.0f32.to_bits()];
+        let c = [1.5f32.to_bits(), 2.0f32.to_bits(), 0.5f32.to_bits(), 1.0f32.to_bits()];
+        let b = [1.0f32.to_bits(), 1.0f32.to_bits(), 1.0f32.to_bits(), 1.0f32.to_bits()];
+        
+        thread.set_vr(1, a);  // vra
+        thread.set_vr(2, c);  // vrc
+        thread.set_vr(3, b);  // vrb
+        
+        // vmaddfp v4, v1, v2, v3
+        // VA-form: [0:5]=4, [6:10]=vrt=4, [11:15]=vra=1, [16:20]=vrb=3, [21:25]=vrc=2, [26:31]=xo=46
+        // Note: vrb is the addend, vrc is the multiplier
+        // Binary: 000100 00100 00001 00011 00010 101110
+        let opcode = 0x1081_18AEu32; // vmaddfp v4, v1, v2, v3
+        execute_instruction(&interpreter, &mut thread, opcode).unwrap();
+        
+        let result = thread.vr(4);
+        // v4[0] = 2.0*1.5 + 1.0 = 4.0
+        // v4[1] = 3.0*2.0 + 1.0 = 7.0
+        // v4[2] = 4.0*0.5 + 1.0 = 3.0
+        // v4[3] = 5.0*1.0 + 1.0 = 6.0
+        assert_eq!(f32::from_bits(result[0]), 4.0);
+        assert_eq!(f32::from_bits(result[1]), 7.0);
+        assert_eq!(f32::from_bits(result[2]), 3.0);
+        assert_eq!(f32::from_bits(result[3]), 6.0);
     }
 }
