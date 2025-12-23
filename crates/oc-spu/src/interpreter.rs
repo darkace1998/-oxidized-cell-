@@ -330,10 +330,22 @@ impl SpuInterpreter {
         let b = thread.regs.read_u32x4(rb as usize);
         let c = thread.regs.read_u32x4(rc as usize);
 
-        // Convert to bytes
-        let a_bytes: [u8; 16] = bytemuck::cast(a);
-        let b_bytes: [u8; 16] = bytemuck::cast(b);
-        let c_bytes: [u8; 16] = bytemuck::cast(c);
+        // Convert to bytes with big-endian handling
+        let u32x4_to_bytes = |words: [u32; 4]| -> [u8; 16] {
+            let mut bytes = [0u8; 16];
+            for (i, word) in words.iter().enumerate() {
+                let wb = word.to_be_bytes();
+                bytes[i * 4] = wb[0];
+                bytes[i * 4 + 1] = wb[1];
+                bytes[i * 4 + 2] = wb[2];
+                bytes[i * 4 + 3] = wb[3];
+            }
+            bytes
+        };
+
+        let a_bytes = u32x4_to_bytes(a);
+        let b_bytes = u32x4_to_bytes(b);
+        let c_bytes = u32x4_to_bytes(c);
 
         let mut result = [0u8; 16];
         for i in 0..16 {
@@ -347,7 +359,15 @@ impl SpuInterpreter {
             };
         }
 
-        thread.regs.write_u32x4(rt as usize, bytemuck::cast(result));
+        // Convert bytes back to u32x4 with big-endian handling
+        let result_u32x4 = [
+            u32::from_be_bytes([result[0], result[1], result[2], result[3]]),
+            u32::from_be_bytes([result[4], result[5], result[6], result[7]]),
+            u32::from_be_bytes([result[8], result[9], result[10], result[11]]),
+            u32::from_be_bytes([result[12], result[13], result[14], result[15]]),
+        ];
+
+        thread.regs.write_u32x4(rt as usize, result_u32x4);
         thread.advance_pc();
         Ok(())
     }
