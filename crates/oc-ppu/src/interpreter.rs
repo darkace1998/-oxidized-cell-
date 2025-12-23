@@ -308,6 +308,267 @@ impl PpuInterpreter {
                 let c = c | if thread.get_xer_so() { 1 } else { 0 };
                 thread.set_cr_field(bf as usize, c);
             }
+            // lwzu - Load Word and Zero with Update
+            33 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lbzu - Load Byte and Zero with Update
+            35 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value: u8 = self.memory.read(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stwu - Store Word with Update
+            37 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u32;
+                self.memory.write_be32(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stbu - Store Byte with Update
+            39 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u8;
+                self.memory.write(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lhz - Load Halfword and Zero
+            40 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+            }
+            // lhzu - Load Halfword and Zero with Update
+            41 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lha - Load Halfword Algebraic
+            42 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i16) as i64 as u64);
+            }
+            // lhau - Load Halfword Algebraic with Update
+            43 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i16) as i64 as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // sth - Store Halfword
+            44 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = thread.gpr(rt as usize) as u16;
+                self.memory.write_be16(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // sthu - Store Halfword with Update
+            45 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u16;
+                self.memory.write_be16(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lmw - Load Multiple Word
+            46 => {
+                let mut ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                for r in rt..32 {
+                    let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    thread.set_gpr(r as usize, value as u64);
+                    ea = ea.wrapping_add(4);
+                }
+            }
+            // stmw - Store Multiple Word
+            47 => {
+                let mut ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                for r in rt..32 {
+                    let value = thread.gpr(r as usize) as u32;
+                    self.memory.write_be32(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    ea = ea.wrapping_add(4);
+                }
+            }
+            // lfs - Load Floating-Point Single
+            48 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f32::from_bits(bits) as f64);
+            }
+            // lfsu - Load Floating-Point Single with Update
+            49 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f32::from_bits(bits) as f64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lfd - Load Floating-Point Double
+            50 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f64::from_bits(bits));
+            }
+            // lfdu - Load Floating-Point Double with Update
+            51 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f64::from_bits(bits));
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stfs - Store Floating-Point Single
+            52 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = (thread.fpr(rt as usize) as f32).to_bits();
+                self.memory.write_be32(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stfsu - Store Floating-Point Single with Update
+            53 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = (thread.fpr(rt as usize) as f32).to_bits();
+                self.memory.write_be32(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stfd - Store Floating-Point Double
+            54 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = thread.fpr(rt as usize).to_bits();
+                self.memory.write_be64(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stfdu - Store Floating-Point Double with Update
+            55 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = thread.fpr(rt as usize).to_bits();
+                self.memory.write_be64(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // ld - Load Doubleword (DS-form, but handled here with d & ~3)
+            58 => {
+                let ds = (d as i16) & !3;
+                let ea = if ra == 0 { ds as u64 } else { thread.gpr(ra as usize).wrapping_add(ds as i64 as u64) };
+                let value = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value);
+            }
+            // std - Store Doubleword (DS-form, but handled here with d & ~3)
+            62 => {
+                let ds = (d as i16) & !3;
+                let ea = if ra == 0 { ds as u64 } else { thread.gpr(ra as usize).wrapping_add(ds as i64 as u64) };
+                let value = thread.gpr(rt as usize);
+                self.memory.write_be64(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // xori - XOR Immediate
+            26 => {
+                let value = thread.gpr(rt as usize) ^ (d as u64 & 0xFFFF);
+                thread.set_gpr(ra as usize, value);
+            }
+            // xoris - XOR Immediate Shifted
+            27 => {
+                let value = thread.gpr(rt as usize) ^ ((d as u64 & 0xFFFF) << 16);
+                thread.set_gpr(ra as usize, value);
+            }
+            // andis. - AND Immediate Shifted
+            29 => {
+                let value = thread.gpr(rt as usize) & ((d as u64 & 0xFFFF) << 16);
+                thread.set_gpr(ra as usize, value);
+                self.update_cr0(thread, value);
+            }
+            // subfic - Subtract From Immediate Carrying
+            8 => {
+                let a = thread.gpr(ra as usize);
+                let result = (d as u64).wrapping_sub(a);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca((d as u64) >= a);
+            }
+            // mulli - Multiply Low Immediate
+            7 => {
+                let a = thread.gpr(ra as usize) as i64;
+                let result = a.wrapping_mul(d) as u64;
+                thread.set_gpr(rt as usize, result);
+            }
+            // addic - Add Immediate Carrying
+            12 => {
+                let a = thread.gpr(ra as usize);
+                let (result, carry) = a.overflowing_add(d as u64);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(carry);
+            }
+            // addic. - Add Immediate Carrying and Record
+            13 => {
+                let a = thread.gpr(ra as usize);
+                let (result, carry) = a.overflowing_add(d as u64);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(carry);
+                self.update_cr0(thread, result);
+            }
             _ => {
                 tracing::warn!("Unimplemented D-form op {} at 0x{:08x}", op, thread.pc());
             }
@@ -469,6 +730,467 @@ impl PpuInterpreter {
                     }
                 }
             }
+            // andc - AND with Complement
+            60 => {
+                let value = thread.gpr(rt as usize) & !thread.gpr(rb as usize);
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // orc - OR with Complement
+            412 => {
+                let value = thread.gpr(rt as usize) | !thread.gpr(rb as usize);
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // nand - NAND
+            476 => {
+                let value = !(thread.gpr(rt as usize) & thread.gpr(rb as usize));
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // eqv - Equivalent (XNOR)
+            284 => {
+                let value = !(thread.gpr(rt as usize) ^ thread.gpr(rb as usize));
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // slw - Shift Left Word
+            24 => {
+                let n = thread.gpr(rb as usize) & 0x3F;
+                let value = if n > 31 {
+                    0
+                } else {
+                    (thread.gpr(rt as usize) as u32).wrapping_shl(n as u32) as u64
+                };
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // srw - Shift Right Word
+            536 => {
+                let n = thread.gpr(rb as usize) & 0x3F;
+                let value = if n > 31 {
+                    0
+                } else {
+                    (thread.gpr(rt as usize) as u32).wrapping_shr(n as u32) as u64
+                };
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // sraw - Shift Right Algebraic Word
+            792 => {
+                let n = thread.gpr(rb as usize) & 0x3F;
+                let (value, ca) = if n > 31 {
+                    let s = (thread.gpr(rt as usize) as i32) >> 31;
+                    (s as u64, s != 0)
+                } else {
+                    let s = (thread.gpr(rt as usize) as i32) >> (n as u32);
+                    let ca = s < 0 && (thread.gpr(rt as usize) as u32 & ((1u32 << n) - 1)) != 0;
+                    (s as u64, ca)
+                };
+                thread.set_gpr(ra as usize, value);
+                thread.set_xer_ca(ca);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // sld - Shift Left Doubleword
+            27 => {
+                let n = thread.gpr(rb as usize) & 0x7F;
+                let value = if n > 63 {
+                    0
+                } else {
+                    thread.gpr(rt as usize).wrapping_shl(n as u32)
+                };
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // srd - Shift Right Doubleword
+            539 => {
+                let n = thread.gpr(rb as usize) & 0x7F;
+                let value = if n > 63 {
+                    0
+                } else {
+                    thread.gpr(rt as usize).wrapping_shr(n as u32)
+                };
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // srad - Shift Right Algebraic Doubleword
+            794 => {
+                let n = thread.gpr(rb as usize) & 0x7F;
+                let (value, ca) = if n > 63 {
+                    let s = (thread.gpr(rt as usize) as i64) >> 63;
+                    (s as u64, s != 0)
+                } else {
+                    let s = (thread.gpr(rt as usize) as i64) >> (n as u32);
+                    let ca = s < 0 && (thread.gpr(rt as usize) & ((1u64 << n) - 1)) != 0;
+                    (s as u64, ca)
+                };
+                thread.set_gpr(ra as usize, value);
+                thread.set_xer_ca(ca);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // cntlzw - Count Leading Zeros Word
+            26 => {
+                let value = (thread.gpr(rt as usize) as u32).leading_zeros() as u64;
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // frsqrte - Floating Reciprocal Square Root Estimate (opcode 31, xo 26)
+            // This is handled in A-form, not X-form
+            // cntlzd - Count Leading Zeros Doubleword
+            58 => {
+                let value = thread.gpr(rt as usize).leading_zeros() as u64;
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // popcntw - Population Count Word
+            378 => {
+                let value = (thread.gpr(rt as usize) as u32).count_ones() as u64;
+                thread.set_gpr(ra as usize, value);
+            }
+            // popcntd - Population Count Doubleword
+            506 => {
+                let value = thread.gpr(rt as usize).count_ones() as u64;
+                thread.set_gpr(ra as usize, value);
+            }
+            // extsb - Extend Sign Byte
+            954 => {
+                let value = (thread.gpr(rt as usize) as i8) as i64 as u64;
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // extsh - Extend Sign Halfword
+            922 => {
+                let value = (thread.gpr(rt as usize) as i16) as i64 as u64;
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // extsw - Extend Sign Word
+            986 => {
+                let value = (thread.gpr(rt as usize) as i32) as i64 as u64;
+                thread.set_gpr(ra as usize, value);
+                if rc { self.update_cr0(thread, value); }
+            }
+            // lbzx - Load Byte and Zero Indexed
+            87 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value: u8 = self.memory.read(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+            }
+            // lhzx - Load Halfword and Zero Indexed
+            279 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+            }
+            // lhax - Load Halfword Algebraic Indexed
+            343 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i16) as i64 as u64);
+            }
+            // lwax - Load Word Algebraic Indexed
+            341 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i32) as i64 as u64);
+            }
+            // ldx - Load Doubleword Indexed
+            21 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value);
+            }
+            // stbx - Store Byte Indexed
+            215 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = thread.gpr(rt as usize) as u8;
+                self.memory.write(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // sthx - Store Halfword Indexed
+            407 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = thread.gpr(rt as usize) as u16;
+                self.memory.write_be16(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stdx - Store Doubleword Indexed
+            149 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = thread.gpr(rt as usize);
+                self.memory.write_be64(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // lwarx - Load Word and Reserve Indexed
+            20 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let reservation = self.memory.reservation(ea as u32);
+                let _time = reservation.acquire();
+                let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+            }
+            // ldarx - Load Doubleword and Reserve Indexed
+            84 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let reservation = self.memory.reservation(ea as u32);
+                let _time = reservation.acquire();
+                let value = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value);
+            }
+            // stwcx. - Store Word Conditional Indexed
+            150 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = thread.gpr(rt as usize) as u32;
+                let reservation = self.memory.reservation(ea as u32);
+                let time = reservation.acquire();
+                let success = if reservation.try_lock(time) {
+                    self.memory.write_be32(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    reservation.unlock_and_increment();
+                    true
+                } else {
+                    false
+                };
+                let cr0 = if success { 0b0010 } else { 0b0000 } | if thread.get_xer_so() { 1 } else { 0 };
+                thread.set_cr_field(0, cr0);
+            }
+            // stdcx. - Store Doubleword Conditional Indexed
+            214 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let value = thread.gpr(rt as usize);
+                let reservation = self.memory.reservation(ea as u32);
+                let time = reservation.acquire();
+                let success = if reservation.try_lock(time) {
+                    self.memory.write_be64(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    reservation.unlock_and_increment();
+                    true
+                } else {
+                    false
+                };
+                let cr0 = if success { 0b0010 } else { 0b0000 } | if thread.get_xer_so() { 1 } else { 0 };
+                thread.set_cr_field(0, cr0);
+            }
+            // lfdx - Load Floating-Point Double Indexed
+            599 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let bits = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f64::from_bits(bits));
+            }
+            // lfsx - Load Floating-Point Single Indexed
+            535 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let bits = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f32::from_bits(bits) as f64);
+            }
+            // stfdx - Store Floating-Point Double Indexed
+            727 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let bits = thread.fpr(rt as usize).to_bits();
+                self.memory.write_be64(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stfsx - Store Floating-Point Single Indexed
+            663 => {
+                let ea = if ra == 0 { thread.gpr(rb as usize) } else { thread.gpr(ra as usize).wrapping_add(thread.gpr(rb as usize)) };
+                let bits = (thread.fpr(rt as usize) as f32).to_bits();
+                self.memory.write_be32(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // fmr - Floating Move Register
+            72 => {
+                thread.set_fpr(rt as usize, thread.fpr(rb as usize));
+                if rc { float::update_cr1(thread); }
+            }
+            // fneg - Floating Negate
+            40 => {
+                thread.set_fpr(rt as usize, -thread.fpr(rb as usize));
+                if rc { float::update_cr1(thread); }
+            }
+            // fabs - Floating Absolute Value
+            264 => {
+                thread.set_fpr(rt as usize, thread.fpr(rb as usize).abs());
+                if rc { float::update_cr1(thread); }
+            }
+            // fnabs - Floating Negative Absolute Value
+            136 => {
+                thread.set_fpr(rt as usize, -thread.fpr(rb as usize).abs());
+                if rc { float::update_cr1(thread); }
+            }
+            // frsp - Floating Round to Single Precision
+            12 => {
+                let result = float::frsp(thread.fpr(rb as usize));
+                thread.set_fpr(rt as usize, result);
+                float::update_fprf(thread, result);
+                if rc { float::update_cr1(thread); }
+            }
+            // fctiw - Floating Convert To Integer Word
+            14 => {
+                let value = thread.fpr(rb as usize);
+                let result = float::fctiwz(value);
+                thread.set_fpr(rt as usize, f64::from_bits(result));
+                if rc { float::update_cr1(thread); }
+            }
+            // fctiwz - Floating Convert To Integer Word with Round Toward Zero
+            15 => {
+                let value = thread.fpr(rb as usize);
+                let result = float::fctiwz(value);
+                thread.set_fpr(rt as usize, f64::from_bits(result));
+                if rc { float::update_cr1(thread); }
+            }
+            // fctid - Floating Convert To Integer Doubleword
+            814 => {
+                let value = thread.fpr(rb as usize);
+                let result = float::fctidz(value);
+                thread.set_fpr(rt as usize, f64::from_bits(result));
+                if rc { float::update_cr1(thread); }
+            }
+            // fctidz - Floating Convert To Integer Doubleword with Round Toward Zero
+            815 => {
+                let value = thread.fpr(rb as usize);
+                let result = float::fctidz(value);
+                thread.set_fpr(rt as usize, f64::from_bits(result));
+                if rc { float::update_cr1(thread); }
+            }
+            // fcfid - Floating Convert From Integer Doubleword
+            846 => {
+                let bits = thread.fpr(rb as usize).to_bits();
+                let result = float::fcfid(bits);
+                thread.set_fpr(rt as usize, result);
+                float::update_fprf(thread, result);
+                if rc { float::update_cr1(thread); }
+            }
+            // fre - Floating Reciprocal Estimate (opcode 59, xo 24, A-form not X-form)
+            // Removed from X-form dispatch
+            // frsqrte - Floating Reciprocal Square Root Estimate (opcode 59, xo 26, A-form not X-form)
+            // Removed from X-form dispatch
+            // fcmpu - Floating Compare Unordered (xo 0, but needs different dispatch)
+            // Handled separately based on primary opcode 63
+            // fcmpo - Floating Compare Ordered (xo 32, but needs context)
+            // Handled separately based on primary opcode 63
+            // mtfsf - Move To FPSCR Fields
+            711 => {
+                let fm = ((opcode >> 17) & 0xFF) as u8;
+                let value = thread.fpr(rb as usize);
+                system::mtfsf(thread, fm, value);
+                if rc { float::update_cr1(thread); }
+            }
+            // mtfsfi - Move To FPSCR Field Immediate
+            134 => {
+                let bf = ((opcode >> 23) & 7) as u8;
+                let imm = ((opcode >> 12) & 0xF) as u8;
+                system::mtfsfi(thread, bf, imm);
+                if rc { float::update_cr1(thread); }
+            }
+            // mtfsb0 - Move To FPSCR Bit 0
+            70 => {
+                let bt = ((opcode >> 21) & 0x1F) as u8;
+                system::mtfsb0(thread, bt);
+                if rc { float::update_cr1(thread); }
+            }
+            // mtfsb1 - Move To FPSCR Bit 1
+            38 => {
+                let bt = ((opcode >> 21) & 0x1F) as u8;
+                system::mtfsb1(thread, bt);
+                if rc { float::update_cr1(thread); }
+            }
+            // mffs - Move From FPSCR
+            583 => {
+                let result = system::mffs(thread);
+                thread.set_fpr(rt as usize, result);
+                if rc { float::update_cr1(thread); }
+            }
+            // sync - Synchronize
+            598 => {
+                std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+            }
+            // lwsync - Lightweight Synchronize (alias of sync with L=1)
+            // Handled same as sync with xo=598 but different L field
+            // eieio - Enforce In-Order Execution of I/O
+            854 => {
+                std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+            }
+            // dcbt - Data Cache Block Touch (hint, no-op in emulator)
+            278 => {
+                // No-op
+            }
+            // dcbst - Data Cache Block Store (no-op in emulator)
+            54 => {
+                // No-op
+            }
+            // dcbf - Data Cache Block Flush (no-op in emulator)
+            86 => {
+                // No-op
+            }
+            // icbi - Instruction Cache Block Invalidate (no-op in emulator)
+            982 => {
+                // No-op
+            }
+            // mfcr - Move From Condition Register
+            19 => {
+                thread.set_gpr(rt as usize, thread.regs.cr as u64);
+            }
+            // mfocrf - Move From One Condition Register Field
+            // Same xo as mfcr but with FXM field set
+            // mtcrf - Move To Condition Register Fields
+            144 => {
+                let crm = ((opcode >> 12) & 0xFF) as u8;
+                let value = thread.gpr(rt as usize);
+                for i in 0..8 {
+                    if (crm >> (7 - i)) & 1 != 0 {
+                        let field = ((value >> (28 - i * 4)) & 0xF) as u32;
+                        thread.set_cr_field(i, field);
+                    }
+                }
+            }
+            // mtocrf - Move To One Condition Register Field
+            // Same implementation as mtcrf
+            // mfmsr - Move From Machine State Register (privileged)
+            83 => {
+                // For emulation, return a fixed MSR value
+                thread.set_gpr(rt as usize, 0x8000_0000_0000_0000); // 64-bit mode
+            }
             // XO-form arithmetic instructions (dispatched as X-form by decoder)
             // Note: These have a 10-bit XO in the decoder, but only 9-bit in the instruction
             // So we need to mask to 9 bits for matching
@@ -546,11 +1268,193 @@ impl PpuInterpreter {
                 }
                 if rc { self.update_cr0(thread, result); }
             }
+            // neg - Negate
+            104 => {
+                let a = thread.gpr(ra as usize);
+                let result = (-(a as i64)) as u64;
+                thread.set_gpr(rt as usize, result);
+                if oe {
+                    let overflow = a == 0x8000_0000_0000_0000;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // addme - Add to Minus One Extended
+            234 => {
+                let a = thread.gpr(ra as usize);
+                let ca = thread.get_xer_ca();
+                let result = a.wrapping_add(if ca { 0 } else { u64::MAX });
+                thread.set_gpr(rt as usize, result);
+                let new_ca = ca || a != 0;
+                thread.set_xer_ca(new_ca);
+                if oe {
+                    let overflow = (a as i64).checked_add(if ca { 0 } else { -1 }).is_none();
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // addze - Add to Zero Extended
+            202 => {
+                let a = thread.gpr(ra as usize);
+                let ca = thread.get_xer_ca();
+                let result = a.wrapping_add(if ca { 1 } else { 0 });
+                thread.set_gpr(rt as usize, result);
+                let new_ca = ca && a == u64::MAX;
+                thread.set_xer_ca(new_ca);
+                if oe {
+                    let overflow = ca && a == u64::MAX;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // subfme - Subtract From Minus One Extended
+            232 => {
+                let a = thread.gpr(ra as usize);
+                let ca = thread.get_xer_ca();
+                let result = (!a).wrapping_add(if ca { 1 } else { 0 });
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(ca || a != u64::MAX);
+                if oe {
+                    let overflow = a == 0x8000_0000_0000_0000 && !ca;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // subfze - Subtract From Zero Extended
+            200 => {
+                let a = thread.gpr(ra as usize);
+                let ca = thread.get_xer_ca();
+                let result = (!a).wrapping_add(if ca { 1 } else { 0 });
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(ca || a != 0);
+                if oe {
+                    let overflow = a == 0x8000_0000_0000_0000 && !ca;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // addc - Add Carrying
+            10 => {
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let (result, carry) = a.overflowing_add(b);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(carry);
+                if oe {
+                    let overflow = ((a as i64).overflowing_add(b as i64)).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // adde - Add Extended
+            138 => {
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let ca = thread.get_xer_ca();
+                let (temp, c1) = a.overflowing_add(b);
+                let (result, c2) = temp.overflowing_add(if ca { 1 } else { 0 });
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(c1 || c2);
+                if oe {
+                    let overflow = ((a as i64).overflowing_add(b as i64)).1 || 
+                                   ((temp as i64).overflowing_add(if ca { 1 } else { 0 })).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // subfc - Subtract From Carrying
+            8 => {
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let result = b.wrapping_sub(a);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(b >= a); // Carry set if no borrow
+                if oe {
+                    let overflow = ((b as i64).overflowing_sub(a as i64)).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // subfe - Subtract From Extended
+            136 => {
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                let ca = thread.get_xer_ca();
+                let (temp, c1) = b.overflowing_sub(a);
+                let (result, c2) = temp.overflowing_sub(if ca { 0 } else { 1 });
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(!(c1 || c2));
+                if oe {
+                    let overflow = ((b as i64).overflowing_sub(a as i64)).1;
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
             // mullw - Multiply Low Word
             235 => {
                 let a = thread.gpr(ra as usize) as i32;
                 let b = thread.gpr(rb as usize) as i32;
                 let result = (a as i64 * b as i64) as u64;
+                thread.set_gpr(rt as usize, result);
+                if oe {
+                    let full_result = (a as i64) * (b as i64);
+                    let overflow = full_result != (result as i32 as i64);
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // mulld - Multiply Low Doubleword
+            233 => {
+                let a = thread.gpr(ra as usize) as i64;
+                let b = thread.gpr(rb as usize) as i64;
+                let result = a.wrapping_mul(b) as u64;
+                thread.set_gpr(rt as usize, result);
+                if oe {
+                    let overflow = a.checked_mul(b).is_none();
+                    thread.set_xer_ov(overflow);
+                    if overflow { thread.set_xer_so(true); }
+                }
+                if rc { self.update_cr0(thread, result); }
+            }
+            // mulhw - Multiply High Word
+            75 => {
+                let a = (thread.gpr(ra as usize) as i32) as i64;
+                let b = (thread.gpr(rb as usize) as i32) as i64;
+                let result = ((a * b) >> 32) as u64;
+                thread.set_gpr(rt as usize, result);
+                if rc { self.update_cr0(thread, result); }
+            }
+            // mulhwu - Multiply High Word Unsigned
+            11 => {
+                let a = (thread.gpr(ra as usize) as u32) as u64;
+                let b = (thread.gpr(rb as usize) as u32) as u64;
+                let result = (a * b) >> 32;
+                thread.set_gpr(rt as usize, result);
+                if rc { self.update_cr0(thread, result); }
+            }
+            // mulhd - Multiply High Doubleword
+            73 => {
+                let a = thread.gpr(ra as usize) as i64 as i128;
+                let b = thread.gpr(rb as usize) as i64 as i128;
+                let result = ((a * b) >> 64) as u64;
+                thread.set_gpr(rt as usize, result);
+                if rc { self.update_cr0(thread, result); }
+            }
+            // mulhdu - Multiply High Doubleword Unsigned
+            9 => {
+                let a = thread.gpr(ra as usize) as u128;
+                let b = thread.gpr(rb as usize) as u128;
+                let result = ((a * b) >> 64) as u64;
                 thread.set_gpr(rt as usize, result);
                 if rc { self.update_cr0(thread, result); }
             }
@@ -561,6 +1465,66 @@ impl PpuInterpreter {
                 if b != 0 && !(a == i32::MIN && b == -1) {
                     let result = (a / b) as i64 as u64;
                     thread.set_gpr(rt as usize, result);
+                    if oe {
+                        thread.set_xer_ov(false);
+                    }
+                } else {
+                    thread.set_gpr(rt as usize, if b == 0 { 0 } else { 0x8000_0000 });
+                    if oe {
+                        thread.set_xer_ov(true);
+                        thread.set_xer_so(true);
+                    }
+                }
+                if rc { self.update_cr0(thread, thread.gpr(rt as usize)); }
+            }
+            // divwu - Divide Word Unsigned
+            459 => {
+                let a = thread.gpr(ra as usize) as u32;
+                let b = thread.gpr(rb as usize) as u32;
+                if b != 0 {
+                    let result = (a / b) as u64;
+                    thread.set_gpr(rt as usize, result);
+                    if oe {
+                        thread.set_xer_ov(false);
+                    }
+                } else {
+                    thread.set_gpr(rt as usize, 0);
+                    if oe {
+                        thread.set_xer_ov(true);
+                        thread.set_xer_so(true);
+                    }
+                }
+                if rc { self.update_cr0(thread, thread.gpr(rt as usize)); }
+            }
+            // divd - Divide Doubleword
+            489 => {
+                let a = thread.gpr(ra as usize) as i64;
+                let b = thread.gpr(rb as usize) as i64;
+                if b != 0 && !(a == i64::MIN && b == -1) {
+                    let result = (a / b) as u64;
+                    thread.set_gpr(rt as usize, result);
+                    if oe {
+                        thread.set_xer_ov(false);
+                    }
+                } else {
+                    thread.set_gpr(rt as usize, if b == 0 { 0 } else { 0x8000_0000_0000_0000 });
+                    if oe {
+                        thread.set_xer_ov(true);
+                        thread.set_xer_so(true);
+                    }
+                }
+                if rc { self.update_cr0(thread, thread.gpr(rt as usize)); }
+            }
+            // divdu - Divide Doubleword Unsigned
+            457 => {
+                let a = thread.gpr(ra as usize);
+                let b = thread.gpr(rb as usize);
+                if b != 0 {
+                    let result = a / b;
+                    thread.set_gpr(rt as usize, result);
+                    if oe {
+                        thread.set_xer_ov(false);
+                    }
                 } else {
                     thread.set_gpr(rt as usize, 0);
                     if oe {
@@ -841,28 +1805,209 @@ impl PpuInterpreter {
         let vra = ((opcode >> 16) & 0x1F) as usize;
         let vrb = ((opcode >> 11) & 0x1F) as usize;
         let vrc = ((opcode >> 6) & 0x1F) as usize;
-        let xo = (opcode & 0x3F) as u8;
+        
+        // For VA-form (3-operand), xo is in bits 26-31 (low 6 bits)
+        let xo_6bit = (opcode & 0x3F) as u8;
+        // For VX-form (2-operand), xo is in bits 21-31 (11 bits)
+        let xo_11bit = ((opcode >> 0) & 0x7FF) as u16;
+        
+        // Determine if this is VA-form or VX-form based on the opcode structure
+        // VA-form: bits 6-10 (vrc) are used, bits 0-5 are xo (small range)
+        // VX-form: bits 0-10 are xo (larger range, typically >= 64)
+        
+        // Check common VA-form opcodes first
+        if xo_6bit <= 0x2F {
+            // This is likely VA-form
+            let a = thread.vr(vra);
+            let b = thread.vr(vrb);
+            let c = thread.vr(vrc);
 
-        let a = thread.vr(vra);
-        let b = thread.vr(vrb);
-        let c = thread.vr(vrc);
+            let result = match xo_6bit {
+                // vperm - Vector Permute
+                0x2B => vector::vperm(a, b, c),
+                // vmaddfp - Vector Multiply-Add Floating-Point
+                0x2E => vector::vmaddfp(a, c, b),
+                // vnmsubfp - Vector Negative Multiply-Subtract Floating-Point
+                0x2F => vector::vnmsubfp(a, c, b),
+                // vsel - Vector Select
+                0x2A => vector::vsel(a, b, c),
+                _ => {
+                    tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo_6bit, thread.pc());
+                    [0u32; 4]
+                }
+            };
 
-        let result = match xo {
-            // vperm - Vector Permute
-            0x2B => vector::vperm(a, b, c),
-            // vmaddfp - Vector Multiply-Add Floating-Point
-            0x2E => vector::vmaddfp(a, c, b),
-            // vnmsubfp - Vector Negative Multiply-Subtract Floating-Point
-            0x2F => vector::vnmsubfp(a, c, b),
-            // vsel - Vector Select
-            0x2A => vector::vsel(a, b, c),
-            _ => {
-                tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo, thread.pc());
-                [0u32; 4]
-            }
-        };
+            thread.set_vr(vrt, result);
+        } else {
+            // VX-form (2-operand) instructions
+            let a = thread.vr(vra);
+            let b = thread.vr(vrb);
+            let uimm = vrc as u8; // For immediate instructions
 
-        thread.set_vr(vrt, result);
+            let result = match xo_11bit {
+                // vaddsws - Vector Add Signed Word Saturate
+                0x180 => vector::vaddsws(a, b),
+                // vaddubs - Vector Add Unsigned Byte Saturate
+                0x200 => {
+                    let mut result = [0u32; 4];
+                    for i in 0..4 {
+                        let a_bytes = a[i].to_be_bytes();
+                        let b_bytes = b[i].to_be_bytes();
+                        let mut r_bytes = [0u8; 4];
+                        for j in 0..4 {
+                            r_bytes[j] = a_bytes[j].saturating_add(b_bytes[j]);
+                        }
+                        result[i] = u32::from_be_bytes(r_bytes);
+                    }
+                    result
+                }
+                // vadduws - Vector Add Unsigned Word Saturate
+                0x280 => vector::vadduws(a, b),
+                // vsubsws - Vector Subtract Signed Word Saturate
+                0x380 => vector::vsubsws(a, b),
+                // vsubuws - Vector Subtract Unsigned Word Saturate
+                0x480 => vector::vsubuws(a, b),
+                // vand - Vector AND
+                0x404 => vector::vand(a, b),
+                // vandc - Vector AND with Complement
+                0x444 => vector::vandc(a, b),
+                // vor - Vector OR
+                0x484 => vector::vor(a, b),
+                // vnor - Vector NOR
+                0x504 => vector::vnor(a, b),
+                // vxor - Vector XOR
+                0x4C4 => vector::vxor(a, b),
+                // vslw - Vector Shift Left Word
+                0x184 => vector::vslw(a, b),
+                // vsrw - Vector Shift Right Word
+                0x284 => vector::vsrw(a, b),
+                // vsraw - Vector Shift Right Algebraic Word
+                0x384 => vector::vsraw(a, b),
+                // vrlw - Vector Rotate Left Word
+                0x084 => vector::vrlw(a, b),
+                // vminsw - Vector Minimum Signed Word
+                0x382 => vector::vminsw(a, b),
+                // vmaxsw - Vector Maximum Signed Word
+                0x182 => vector::vmaxsw(a, b),
+                // vminuw - Vector Minimum Unsigned Word
+                0x282 => vector::vminuw(a, b),
+                // vmaxuw - Vector Maximum Unsigned Word
+                0x082 => vector::vmaxuw(a, b),
+                // vmulwlw - Vector Multiply Low Word
+                0x089 => vector::vmulwlw(a, b),
+                // vcmpequw - Vector Compare Equal Unsigned Word
+                0x086 => {
+                    let (result, all_true) = vector::vcmpequw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtsw - Vector Compare Greater Than Signed Word
+                0x386 => {
+                    let (result, all_true) = vector::vcmpgtsw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtuw - Vector Compare Greater Than Unsigned Word
+                0x286 => {
+                    let (result, all_true) = vector::vcmpgtuw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vaddfp - Vector Add Single-Precision
+                0x00A => vector::vaddfp(a, b),
+                // vsubfp - Vector Subtract Single-Precision
+                0x04A => vector::vsubfp(a, b),
+                // vrefp - Vector Reciprocal Estimate Single-Precision
+                0x10A => vector::vrefp(a),
+                // vrsqrtefp - Vector Reciprocal Square Root Estimate Single-Precision
+                0x14A => vector::vrsqrtefp(a),
+                // vcmpeqfp - Vector Compare Equal Single-Precision
+                0x0C6 => {
+                    let (result, all_true) = vector::vcmpeqfp(a, b);
+                    if (opcode & 0x400) != 0 {
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtfp - Vector Compare Greater Than Single-Precision
+                0x2C6 => {
+                    let (result, all_true) = vector::vcmpgtfp(a, b);
+                    if (opcode & 0x400) != 0 {
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vctsxs - Vector Convert to Signed Integer Word Saturate
+                0x3CA => vector::vctsxs(a, uimm),
+                // vcfsx - Vector Convert from Signed Integer Word
+                0x34A => vector::vcfsx(a, uimm),
+                // vspltw - Vector Splat Word
+                0x28C => vector::vspltw(b, uimm),
+                // vspltisw - Vector Splat Immediate Signed Word
+                0x38C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltisw(simm as i32)
+                }
+                // vspltish - Vector Splat Immediate Signed Halfword
+                0x34C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltish(simm as i16)
+                }
+                // vspltisb - Vector Splat Immediate Signed Byte
+                0x30C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltisb(simm)
+                }
+                // vmrghw - Vector Merge High Word
+                0x04C => vector::vmrghw(a, b),
+                // vmrglw - Vector Merge Low Word
+                0x10C => vector::vmrglw(a, b),
+                // vpkuwus - Vector Pack Unsigned Word Unsigned Saturate
+                0x0CE => vector::vpkuwus(a, b),
+                // lvx - Load Vector Indexed (handled specially with memory)
+                0x007 => {
+                    // This shouldn't be in VA-form dispatch, but handle it anyway
+                    let ea = if vra == 0 { thread.gpr(vrb) } else { thread.gpr(vra).wrapping_add(thread.gpr(vrb)) };
+                    let ea = ea & !0xF; // Align to 16 bytes
+                    let mut result = [0u32; 4];
+                    for i in 0..4 {
+                        result[i] = self.memory.read_be32((ea + i as u64 * 4) as u32).unwrap_or(0);
+                    }
+                    result
+                }
+                // stvx - Store Vector Indexed (handled specially with memory)
+                0x087 => {
+                    let ea = if vra == 0 { thread.gpr(vrb) } else { thread.gpr(vra).wrapping_add(thread.gpr(vrb)) };
+                    let ea = ea & !0xF; // Align to 16 bytes
+                    let value = a;
+                    for i in 0..4 {
+                        let _ = self.memory.write_be32((ea + i as u64 * 4) as u32, value[i]);
+                    }
+                    a // Return unchanged
+                }
+                _ => {
+                    tracing::warn!("Unimplemented VX-form xo {} at 0x{:08x}", xo_11bit, thread.pc());
+                    [0u32; 4]
+                }
+            };
+
+            thread.set_vr(vrt, result);
+        }
+
         thread.advance_pc();
         Ok(())
     }
