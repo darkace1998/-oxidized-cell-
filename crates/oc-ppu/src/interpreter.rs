@@ -308,6 +308,267 @@ impl PpuInterpreter {
                 let c = c | if thread.get_xer_so() { 1 } else { 0 };
                 thread.set_cr_field(bf as usize, c);
             }
+            // lwzu - Load Word and Zero with Update
+            33 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lbzu - Load Byte and Zero with Update
+            35 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value: u8 = self.memory.read(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stwu - Store Word with Update
+            37 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u32;
+                self.memory.write_be32(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stbu - Store Byte with Update
+            39 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u8;
+                self.memory.write(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lhz - Load Halfword and Zero
+            40 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+            }
+            // lhzu - Load Halfword and Zero with Update
+            41 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lha - Load Halfword Algebraic
+            42 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i16) as i64 as u64);
+            }
+            // lhau - Load Halfword Algebraic with Update
+            43 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = self.memory.read_be16(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, (value as i16) as i64 as u64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // sth - Store Halfword
+            44 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let value = thread.gpr(rt as usize) as u16;
+                self.memory.write_be16(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // sthu - Store Halfword with Update
+            45 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let value = thread.gpr(rt as usize) as u16;
+                self.memory.write_be16(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lmw - Load Multiple Word
+            46 => {
+                let mut ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                for r in rt..32 {
+                    let value = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    thread.set_gpr(r as usize, value as u64);
+                    ea = ea.wrapping_add(4);
+                }
+            }
+            // stmw - Store Multiple Word
+            47 => {
+                let mut ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                for r in rt..32 {
+                    let value = thread.gpr(r as usize) as u32;
+                    self.memory.write_be32(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    })?;
+                    ea = ea.wrapping_add(4);
+                }
+            }
+            // lfs - Load Floating-Point Single
+            48 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f32::from_bits(bits) as f64);
+            }
+            // lfsu - Load Floating-Point Single with Update
+            49 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = self.memory.read_be32(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f32::from_bits(bits) as f64);
+                thread.set_gpr(ra as usize, ea);
+            }
+            // lfd - Load Floating-Point Double
+            50 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f64::from_bits(bits));
+            }
+            // lfdu - Load Floating-Point Double with Update
+            51 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_fpr(rt as usize, f64::from_bits(bits));
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stfs - Store Floating-Point Single
+            52 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = (thread.fpr(rt as usize) as f32).to_bits();
+                self.memory.write_be32(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stfsu - Store Floating-Point Single with Update
+            53 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = (thread.fpr(rt as usize) as f32).to_bits();
+                self.memory.write_be32(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // stfd - Store Floating-Point Double
+            54 => {
+                let ea = if ra == 0 { d as u64 } else { thread.gpr(ra as usize).wrapping_add(d as u64) };
+                let bits = thread.fpr(rt as usize).to_bits();
+                self.memory.write_be64(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // stfdu - Store Floating-Point Double with Update
+            55 => {
+                let ea = thread.gpr(ra as usize).wrapping_add(d as u64);
+                let bits = thread.fpr(rt as usize).to_bits();
+                self.memory.write_be64(ea as u32, bits).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(ra as usize, ea);
+            }
+            // ld - Load Doubleword (DS-form, but handled here with d & ~3)
+            58 => {
+                let ds = (d as i16) & !3;
+                let ea = if ra == 0 { ds as u64 } else { thread.gpr(ra as usize).wrapping_add(ds as i64 as u64) };
+                let value = self.memory.read_be64(ea as u32).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+                thread.set_gpr(rt as usize, value);
+            }
+            // std - Store Doubleword (DS-form, but handled here with d & ~3)
+            62 => {
+                let ds = (d as i16) & !3;
+                let ea = if ra == 0 { ds as u64 } else { thread.gpr(ra as usize).wrapping_add(ds as i64 as u64) };
+                let value = thread.gpr(rt as usize);
+                self.memory.write_be64(ea as u32, value).map_err(|_| PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                })?;
+            }
+            // xori - XOR Immediate
+            26 => {
+                let value = thread.gpr(rt as usize) ^ (d as u64 & 0xFFFF);
+                thread.set_gpr(ra as usize, value);
+            }
+            // xoris - XOR Immediate Shifted
+            27 => {
+                let value = thread.gpr(rt as usize) ^ ((d as u64 & 0xFFFF) << 16);
+                thread.set_gpr(ra as usize, value);
+            }
+            // andis. - AND Immediate Shifted
+            29 => {
+                let value = thread.gpr(rt as usize) & ((d as u64 & 0xFFFF) << 16);
+                thread.set_gpr(ra as usize, value);
+                self.update_cr0(thread, value);
+            }
+            // subfic - Subtract From Immediate Carrying
+            8 => {
+                let a = thread.gpr(ra as usize);
+                let result = (d as u64).wrapping_sub(a);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca((d as u64) >= a);
+            }
+            // mulli - Multiply Low Immediate
+            7 => {
+                let a = thread.gpr(ra as usize) as i64;
+                let result = a.wrapping_mul(d) as u64;
+                thread.set_gpr(rt as usize, result);
+            }
+            // addic - Add Immediate Carrying
+            12 => {
+                let a = thread.gpr(ra as usize);
+                let (result, carry) = a.overflowing_add(d as u64);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(carry);
+            }
+            // addic. - Add Immediate Carrying and Record
+            13 => {
+                let a = thread.gpr(ra as usize);
+                let (result, carry) = a.overflowing_add(d as u64);
+                thread.set_gpr(rt as usize, result);
+                thread.set_xer_ca(carry);
+                self.update_cr0(thread, result);
+            }
             _ => {
                 tracing::warn!("Unimplemented D-form op {} at 0x{:08x}", op, thread.pc());
             }
@@ -1544,28 +1805,209 @@ impl PpuInterpreter {
         let vra = ((opcode >> 16) & 0x1F) as usize;
         let vrb = ((opcode >> 11) & 0x1F) as usize;
         let vrc = ((opcode >> 6) & 0x1F) as usize;
-        let xo = (opcode & 0x3F) as u8;
+        
+        // For VA-form (3-operand), xo is in bits 26-31 (low 6 bits)
+        let xo_6bit = (opcode & 0x3F) as u8;
+        // For VX-form (2-operand), xo is in bits 21-31 (11 bits)
+        let xo_11bit = ((opcode >> 0) & 0x7FF) as u16;
+        
+        // Determine if this is VA-form or VX-form based on the opcode structure
+        // VA-form: bits 6-10 (vrc) are used, bits 0-5 are xo (small range)
+        // VX-form: bits 0-10 are xo (larger range, typically >= 64)
+        
+        // Check common VA-form opcodes first
+        if xo_6bit <= 0x2F {
+            // This is likely VA-form
+            let a = thread.vr(vra);
+            let b = thread.vr(vrb);
+            let c = thread.vr(vrc);
 
-        let a = thread.vr(vra);
-        let b = thread.vr(vrb);
-        let c = thread.vr(vrc);
+            let result = match xo_6bit {
+                // vperm - Vector Permute
+                0x2B => vector::vperm(a, b, c),
+                // vmaddfp - Vector Multiply-Add Floating-Point
+                0x2E => vector::vmaddfp(a, c, b),
+                // vnmsubfp - Vector Negative Multiply-Subtract Floating-Point
+                0x2F => vector::vnmsubfp(a, c, b),
+                // vsel - Vector Select
+                0x2A => vector::vsel(a, b, c),
+                _ => {
+                    tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo_6bit, thread.pc());
+                    [0u32; 4]
+                }
+            };
 
-        let result = match xo {
-            // vperm - Vector Permute
-            0x2B => vector::vperm(a, b, c),
-            // vmaddfp - Vector Multiply-Add Floating-Point
-            0x2E => vector::vmaddfp(a, c, b),
-            // vnmsubfp - Vector Negative Multiply-Subtract Floating-Point
-            0x2F => vector::vnmsubfp(a, c, b),
-            // vsel - Vector Select
-            0x2A => vector::vsel(a, b, c),
-            _ => {
-                tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo, thread.pc());
-                [0u32; 4]
-            }
-        };
+            thread.set_vr(vrt, result);
+        } else {
+            // VX-form (2-operand) instructions
+            let a = thread.vr(vra);
+            let b = thread.vr(vrb);
+            let uimm = vrc as u8; // For immediate instructions
 
-        thread.set_vr(vrt, result);
+            let result = match xo_11bit {
+                // vaddsws - Vector Add Signed Word Saturate
+                0x180 => vector::vaddsws(a, b),
+                // vaddubs - Vector Add Unsigned Byte Saturate
+                0x200 => {
+                    let mut result = [0u32; 4];
+                    for i in 0..4 {
+                        let a_bytes = a[i].to_be_bytes();
+                        let b_bytes = b[i].to_be_bytes();
+                        let mut r_bytes = [0u8; 4];
+                        for j in 0..4 {
+                            r_bytes[j] = a_bytes[j].saturating_add(b_bytes[j]);
+                        }
+                        result[i] = u32::from_be_bytes(r_bytes);
+                    }
+                    result
+                }
+                // vadduws - Vector Add Unsigned Word Saturate
+                0x280 => vector::vadduws(a, b),
+                // vsubsws - Vector Subtract Signed Word Saturate
+                0x380 => vector::vsubsws(a, b),
+                // vsubuws - Vector Subtract Unsigned Word Saturate
+                0x480 => vector::vsubuws(a, b),
+                // vand - Vector AND
+                0x404 => vector::vand(a, b),
+                // vandc - Vector AND with Complement
+                0x444 => vector::vandc(a, b),
+                // vor - Vector OR
+                0x484 => vector::vor(a, b),
+                // vnor - Vector NOR
+                0x504 => vector::vnor(a, b),
+                // vxor - Vector XOR
+                0x4C4 => vector::vxor(a, b),
+                // vslw - Vector Shift Left Word
+                0x184 => vector::vslw(a, b),
+                // vsrw - Vector Shift Right Word
+                0x284 => vector::vsrw(a, b),
+                // vsraw - Vector Shift Right Algebraic Word
+                0x384 => vector::vsraw(a, b),
+                // vrlw - Vector Rotate Left Word
+                0x084 => vector::vrlw(a, b),
+                // vminsw - Vector Minimum Signed Word
+                0x382 => vector::vminsw(a, b),
+                // vmaxsw - Vector Maximum Signed Word
+                0x182 => vector::vmaxsw(a, b),
+                // vminuw - Vector Minimum Unsigned Word
+                0x282 => vector::vminuw(a, b),
+                // vmaxuw - Vector Maximum Unsigned Word
+                0x082 => vector::vmaxuw(a, b),
+                // vmulwlw - Vector Multiply Low Word
+                0x089 => vector::vmulwlw(a, b),
+                // vcmpequw - Vector Compare Equal Unsigned Word
+                0x086 => {
+                    let (result, all_true) = vector::vcmpequw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtsw - Vector Compare Greater Than Signed Word
+                0x386 => {
+                    let (result, all_true) = vector::vcmpgtsw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtuw - Vector Compare Greater Than Unsigned Word
+                0x286 => {
+                    let (result, all_true) = vector::vcmpgtuw(a, b);
+                    if (opcode & 0x400) != 0 { // Rc bit
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vaddfp - Vector Add Single-Precision
+                0x00A => vector::vaddfp(a, b),
+                // vsubfp - Vector Subtract Single-Precision
+                0x04A => vector::vsubfp(a, b),
+                // vrefp - Vector Reciprocal Estimate Single-Precision
+                0x10A => vector::vrefp(a),
+                // vrsqrtefp - Vector Reciprocal Square Root Estimate Single-Precision
+                0x14A => vector::vrsqrtefp(a),
+                // vcmpeqfp - Vector Compare Equal Single-Precision
+                0x0C6 => {
+                    let (result, all_true) = vector::vcmpeqfp(a, b);
+                    if (opcode & 0x400) != 0 {
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vcmpgtfp - Vector Compare Greater Than Single-Precision
+                0x2C6 => {
+                    let (result, all_true) = vector::vcmpgtfp(a, b);
+                    if (opcode & 0x400) != 0 {
+                        let cr6 = if all_true { 0b1000 } else { 0b0000 };
+                        thread.set_cr_field(6, cr6);
+                    }
+                    result
+                }
+                // vctsxs - Vector Convert to Signed Integer Word Saturate
+                0x3CA => vector::vctsxs(a, uimm),
+                // vcfsx - Vector Convert from Signed Integer Word
+                0x34A => vector::vcfsx(a, uimm),
+                // vspltw - Vector Splat Word
+                0x28C => vector::vspltw(b, uimm),
+                // vspltisw - Vector Splat Immediate Signed Word
+                0x38C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltisw(simm as i32)
+                }
+                // vspltish - Vector Splat Immediate Signed Halfword
+                0x34C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltish(simm as i16)
+                }
+                // vspltisb - Vector Splat Immediate Signed Byte
+                0x30C => {
+                    let simm = ((opcode >> 16) & 0x1F) as i8;
+                    let simm = if (simm & 0x10) != 0 { (simm as u8 | 0xE0) as i8 } else { simm };
+                    vector::vspltisb(simm)
+                }
+                // vmrghw - Vector Merge High Word
+                0x04C => vector::vmrghw(a, b),
+                // vmrglw - Vector Merge Low Word
+                0x10C => vector::vmrglw(a, b),
+                // vpkuwus - Vector Pack Unsigned Word Unsigned Saturate
+                0x0CE => vector::vpkuwus(a, b),
+                // lvx - Load Vector Indexed (handled specially with memory)
+                0x007 => {
+                    // This shouldn't be in VA-form dispatch, but handle it anyway
+                    let ea = if vra == 0 { thread.gpr(vrb) } else { thread.gpr(vra).wrapping_add(thread.gpr(vrb)) };
+                    let ea = ea & !0xF; // Align to 16 bytes
+                    let mut result = [0u32; 4];
+                    for i in 0..4 {
+                        result[i] = self.memory.read_be32((ea + i as u64 * 4) as u32).unwrap_or(0);
+                    }
+                    result
+                }
+                // stvx - Store Vector Indexed (handled specially with memory)
+                0x087 => {
+                    let ea = if vra == 0 { thread.gpr(vrb) } else { thread.gpr(vra).wrapping_add(thread.gpr(vrb)) };
+                    let ea = ea & !0xF; // Align to 16 bytes
+                    let value = a;
+                    for i in 0..4 {
+                        let _ = self.memory.write_be32((ea + i as u64 * 4) as u32, value[i]);
+                    }
+                    a // Return unchanged
+                }
+                _ => {
+                    tracing::warn!("Unimplemented VX-form xo {} at 0x{:08x}", xo_11bit, thread.pc());
+                    [0u32; 4]
+                }
+            };
+
+            thread.set_vr(vrt, result);
+        }
+
         thread.advance_pc();
         Ok(())
     }
