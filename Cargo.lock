@@ -2585,6 +2585,7 @@ dependencies = [
 name = "oc-audio"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "cpal",
  "oc-core",
  "tracing",
@@ -2617,7 +2618,9 @@ dependencies = [
 name = "oc-hle"
 version = "0.1.0"
 dependencies = [
+ "oc-audio",
  "oc-core",
+ "oc-input",
  "oc-memory",
  "tracing",
 ]

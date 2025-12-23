@@ -65,6 +65,18 @@ impl PadState {
             self.buttons &= !button.bits();
         }
     }
+
+    /// Update the left analog stick values (0-255).
+    pub fn set_left_stick(&mut self, x: u8, y: u8) {
+        self.left_x = x;
+        self.left_y = y;
+    }
+
+    /// Update the right analog stick values (0-255).
+    pub fn set_right_stick(&mut self, x: u8, y: u8) {
+        self.right_x = x;
+        self.right_y = y;
+    }
 }
 
 /// Pad handler for a single controller
@@ -94,6 +106,45 @@ impl Pad {
         self.connected = false;
         self.state = PadState::new();
     }
+
+    /// Apply a button press or release
+    pub fn set_button(&mut self, button: PadButtons, pressed: bool) {
+        self.state.set_button(button, pressed);
+    }
+
+    /// Update analog stick positions.
+    pub fn set_left_stick(&mut self, x: u8, y: u8) {
+        self.state.set_left_stick(x, y);
+    }
+
+    pub fn set_right_stick(&mut self, x: u8, y: u8) {
+        self.state.set_right_stick(x, y);
+    }
+}
+
+/// Manages a collection of pads.
+pub struct PadManager {
+    pads: Vec<Pad>,
+}
+
+impl PadManager {
+    pub fn new(count: usize) -> Self {
+        let mut pads = Vec::with_capacity(count);
+        for idx in 0..count {
+            pads.push(Pad::new(idx as u8));
+        }
+        Self { pads }
+    }
+
+    pub fn get_pad_mut(&mut self, port: u8) -> Option<&mut Pad> {
+        self.pads.get_mut(port as usize)
+    }
+
+    pub fn connect_all(&mut self) {
+        for pad in &mut self.pads {
+            pad.connect();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -117,5 +168,13 @@ mod tests {
         
         state.set_button(PadButtons::CROSS, false);
         assert!(!state.is_button_pressed(PadButtons::CROSS));
+    }
+
+    #[test]
+    fn test_analog_updates() {
+        let mut state = PadState::new();
+        state.set_left_stick(200, 100);
+        assert_eq!(state.left_x, 200);
+        assert_eq!(state.left_y, 100);
     }
 }

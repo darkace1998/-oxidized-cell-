@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use crate::{cell_audio, cell_pad};
+
 /// HLE function signature
 pub type HleFunction = fn(args: &[u64]) -> i64;
 
@@ -68,6 +70,14 @@ impl ModuleRegistry {
         pad.register(0x3733EA3C, |_| 0); // cellPadEnd
         pad.register(0x1CF98800, |_| 0); // cellPadGetData
         self.modules.insert("cellPad".to_string(), pad);
+
+        // cellAudio
+        self.modules
+            .insert("cellAudio".to_string(), cell_audio::module());
+
+        // Overwrite cellPad with a richer implementation
+        self.modules
+            .insert("cellPad".to_string(), cell_pad::module());
     }
 
     /// Get a module by name

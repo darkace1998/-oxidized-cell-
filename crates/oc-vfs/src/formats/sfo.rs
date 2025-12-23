@@ -130,8 +130,38 @@ impl Sfo {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_sfo_struct() {
-        // Test would require actual SFO data
+        // Build a minimal SFO containing a single UTF8 string entry with key "TITLE"
+        let mut data = Vec::new();
+        // Header
+        data.extend_from_slice(b"\x00PSF"); // magic
+        data.extend_from_slice(&0x00000101u32.to_le_bytes()); // version
+        data.extend_from_slice(&0x00000024u32.to_le_bytes()); // key table start
+        data.extend_from_slice(&0x0000002Cu32.to_le_bytes()); // data table start
+        data.extend_from_slice(&1u32.to_le_bytes()); // entries count
+
+        // One entry
+        data.extend_from_slice(&0u16.to_le_bytes()); // key offset
+        data.extend_from_slice(&0x0204u16.to_le_bytes()); // data fmt (UTF8)
+        data.extend_from_slice(&5u32.to_le_bytes()); // data len
+        data.extend_from_slice(&5u32.to_le_bytes()); // data max len
+        data.extend_from_slice(&0u32.to_le_bytes()); // data offset
+
+        // Key table ("TITLE\0") at offset 0x24
+        data.extend_from_slice(b"TITLE\0");
+        // Pad to data table start (0x2C)
+        while data.len() < 0x2C {
+            data.push(0);
+        }
+
+        // Data table: "Demo\0"
+        data.extend_from_slice(b"Demo\0");
+
+        let mut cursor = std::io::Cursor::new(data);
+        let parsed = Sfo::parse(&mut cursor).unwrap();
+        assert_eq!(parsed.title(), Some("Demo"));
     }
 }
