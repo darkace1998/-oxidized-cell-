@@ -17,3 +17,8 @@ tracing.workspace = true
 windows-sys = { version = "0.59", features = ["Win32_System_Memory"] }
 
 [dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "memory_benchmarks"
+harness = false
