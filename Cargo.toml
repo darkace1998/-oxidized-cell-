@@ -1,0 +1,96 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/oc-core",
+    "crates/oc-memory",
+    "crates/oc-ppu",
+    "crates/oc-spu",
+    "crates/oc-rsx",
+    "crates/oc-lv2",
+    "crates/oc-audio",
+    "crates/oc-input",
+    "crates/oc-vfs",
+    "crates/oc-hle",
+    "crates/oc-loader",
+    "crates/oc-ffi",
+    "crates/oc-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "GPL-3.0"
+repository = "https://github.com/darkace1998/-oxidized-cell-"
+
+[workspace.dependencies]
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Async
+tokio = { version = "1.0", features = ["full"] }
+
+# Graphics
+ash = "0.38"
+gpu-allocator = "0.27"
+
+# Audio
+cpal = "0.15"
+
+# UI
+eframe = "0.29"
+egui = "0.29"
+
+# Numerics
+bytemuck = { version = "1.14", features = ["derive"] }
+bitflags = "2.4"
+
+# Concurrency
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# FFI
+libc = "0.2"
+
+# File paths
+dirs = "5.0"
+
+# Testing
+criterion = "0.5"
+
+# Internal crates
+oc-core = { path = "crates/oc-core" }
+oc-memory = { path = "crates/oc-memory" }
+oc-ppu = { path = "crates/oc-ppu" }
+oc-spu = { path = "crates/oc-spu" }
+oc-rsx = { path = "crates/oc-rsx" }
+oc-lv2 = { path = "crates/oc-lv2" }
+oc-audio = { path = "crates/oc-audio" }
+oc-input = { path = "crates/oc-input" }
+oc-vfs = { path = "crates/oc-vfs" }
+oc-hle = { path = "crates/oc-hle" }
+oc-loader = { path = "crates/oc-loader" }
+oc-ffi = { path = "crates/oc-ffi" }
+oc-ui = { path = "crates/oc-ui" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1  # Some optimization for usable debug builds
+
+[profile.bench]
+inherits = "release"
+debug = true

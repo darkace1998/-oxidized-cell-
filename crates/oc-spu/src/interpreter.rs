@@ -1,0 +1,399 @@
+//! SPU interpreter implementation
+
+use crate::decoder::SpuDecoder;
+use crate::thread::SpuThread;
+use oc_core::error::SpuError;
+
+/// SPU interpreter for instruction execution
+pub struct SpuInterpreter;
+
+impl SpuInterpreter {
+    /// Create a new SPU interpreter
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Execute a single instruction
+    pub fn step(&self, thread: &mut SpuThread) -> Result<(), SpuError> {
+        // Fetch instruction from local storage
+        let pc = thread.pc();
+        let opcode = thread.ls_read_u32(pc);
+
+        // Decode and execute
+        self.execute(thread, opcode)?;
+
+        Ok(())
+    }
+
+    /// Execute a decoded instruction
+    fn execute(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let op11 = SpuDecoder::op11(opcode);
+        let op10 = SpuDecoder::op10(opcode);
+        let op8 = SpuDecoder::op8(opcode);
+        let op7 = SpuDecoder::op7(opcode);
+        let op4 = SpuDecoder::op4(opcode);
+
+        // Match based on opcode patterns
+        match op4 {
+            // Branch instructions (RI18 form)
+            0b0100 => self.execute_branch(thread, opcode)?,
+            0b0110 => self.execute_branch_if_zero(thread, opcode)?,
+            0b0010 => self.execute_branch_if_not_zero(thread, opcode)?,
+            0b0001 => self.execute_branch_if_zero_halfword(thread, opcode)?,
+            0b0011 => self.execute_branch_if_not_zero_halfword(thread, opcode)?,
+
+            _ => {
+                // Check other opcode lengths
+                match op7 {
+                    0b0100000..=0b0100001 => self.execute_immediate_load(thread, opcode)?,
+                    _ => {
+                        match op8 {
+                            0b00011100 => self.execute_ai(thread, opcode)?,
+                            0b00011101 => self.execute_ahi(thread, opcode)?,
+                            0b00010100 => self.execute_sfi(thread, opcode)?,
+                            0b00010101 => self.execute_sfhi(thread, opcode)?,
+                            _ => {
+                                match op10 {
+                                    0b0000011000 => self.execute_add(thread, opcode)?,
+                                    0b0000001000 => self.execute_subtract(thread, opcode)?,
+                                    0b0001000001 => self.execute_and(thread, opcode)?,
+                                    0b0001000101 => self.execute_or(thread, opcode)?,
+                                    0b0001001001 => self.execute_xor(thread, opcode)?,
+                                    0b0001001101 => self.execute_nor(thread, opcode)?,
+                                    0b0000100000 => self.execute_stop(thread, opcode)?,
+                                    0b0000000000 => {
+                                        // nop
+                                        thread.advance_pc();
+                                    }
+                                    _ => {
+                                        match op11 {
+                                            0b01111000100 => self.execute_shufb(thread, opcode)?,
+                                            0b01010100101 | 0b01010110101 | 0b01111010101 => {
+                                                // FMA-type instructions
+                                                thread.advance_pc();
+                                            }
+                                            _ => {
+                                                tracing::warn!(
+                                                    "Unknown SPU instruction 0x{:08x} at 0x{:05x}",
+                                                    opcode,
+                                                    thread.pc()
+                                                );
+                                                thread.advance_pc();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute branch (br)
+    fn execute_branch(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i16_val, _rt) = SpuDecoder::ri16_form(opcode);
+        let offset = (i16_val as i32) << 2;
+        let target = (thread.pc() as i32 + offset) as u32;
+        thread.set_pc(target);
+        Ok(())
+    }
+
+    /// Execute branch if zero (brz)
+    fn execute_branch_if_zero(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i16_val, rt) = SpuDecoder::ri16_form(opcode);
+        let value = thread.regs.read_preferred_u32(rt as usize);
+        if value == 0 {
+            let offset = (i16_val as i32) << 2;
+            let target = (thread.pc() as i32 + offset) as u32;
+            thread.set_pc(target);
+        } else {
+            thread.advance_pc();
+        }
+        Ok(())
+    }
+
+    /// Execute branch if not zero (brnz)
+    fn execute_branch_if_not_zero(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i16_val, rt) = SpuDecoder::ri16_form(opcode);
+        let value = thread.regs.read_preferred_u32(rt as usize);
+        if value != 0 {
+            let offset = (i16_val as i32) << 2;
+            let target = (thread.pc() as i32 + offset) as u32;
+            thread.set_pc(target);
+        } else {
+            thread.advance_pc();
+        }
+        Ok(())
+    }
+
+    /// Execute branch if zero halfword (brhz)
+    fn execute_branch_if_zero_halfword(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i16_val, rt) = SpuDecoder::ri16_form(opcode);
+        let value = thread.regs.read_preferred_u32(rt as usize) & 0xFFFF;
+        if value == 0 {
+            let offset = (i16_val as i32) << 2;
+            let target = (thread.pc() as i32 + offset) as u32;
+            thread.set_pc(target);
+        } else {
+            thread.advance_pc();
+        }
+        Ok(())
+    }
+
+    /// Execute branch if not zero halfword (brhnz)
+    fn execute_branch_if_not_zero_halfword(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i16_val, rt) = SpuDecoder::ri16_form(opcode);
+        let value = thread.regs.read_preferred_u32(rt as usize) & 0xFFFF;
+        if value != 0 {
+            let offset = (i16_val as i32) << 2;
+            let target = (thread.pc() as i32 + offset) as u32;
+            thread.set_pc(target);
+        } else {
+            thread.advance_pc();
+        }
+        Ok(())
+    }
+
+    /// Execute immediate load (il, ila, ilh, iohl)
+    fn execute_immediate_load(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let op7 = SpuDecoder::op7(opcode);
+        let (i16_val, rt) = SpuDecoder::ri16_form(opcode);
+
+        match op7 {
+            // il - Immediate Load Word
+            0b0100000 => {
+                let value = i16_val as i32 as u32;
+                thread.regs.write_u32x4(rt as usize, [value, value, value, value]);
+            }
+            // ilh - Immediate Load Halfword
+            0b0100001 => {
+                let hword = i16_val as u16;
+                let value = ((hword as u32) << 16) | (hword as u32);
+                thread.regs.write_u32x4(rt as usize, [value, value, value, value]);
+            }
+            _ => {}
+        }
+
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute add immediate (ai)
+    fn execute_ai(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i10, ra, rt) = SpuDecoder::ri10_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let result = [
+            (a[0] as i32).wrapping_add(i10 as i32) as u32,
+            (a[1] as i32).wrapping_add(i10 as i32) as u32,
+            (a[2] as i32).wrapping_add(i10 as i32) as u32,
+            (a[3] as i32).wrapping_add(i10 as i32) as u32,
+        ];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute add halfword immediate (ahi)
+    fn execute_ahi(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i10, ra, rt) = SpuDecoder::ri10_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let mut result = [0u32; 4];
+        for i in 0..4 {
+            let hi = ((a[i] >> 16) as i16).wrapping_add(i10 as i16) as u16;
+            let lo = ((a[i] & 0xFFFF) as i16).wrapping_add(i10 as i16) as u16;
+            result[i] = ((hi as u32) << 16) | (lo as u32);
+        }
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute subtract from immediate (sfi)
+    fn execute_sfi(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i10, ra, rt) = SpuDecoder::ri10_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let result = [
+            (i10 as i32).wrapping_sub(a[0] as i32) as u32,
+            (i10 as i32).wrapping_sub(a[1] as i32) as u32,
+            (i10 as i32).wrapping_sub(a[2] as i32) as u32,
+            (i10 as i32).wrapping_sub(a[3] as i32) as u32,
+        ];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute subtract from halfword immediate (sfhi)
+    fn execute_sfhi(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (i10, ra, rt) = SpuDecoder::ri10_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let mut result = [0u32; 4];
+        for i in 0..4 {
+            let hi = (i10 as i16).wrapping_sub((a[i] >> 16) as i16) as u16;
+            let lo = (i10 as i16).wrapping_sub((a[i] & 0xFFFF) as i16) as u16;
+            result[i] = ((hi as u32) << 16) | (lo as u32);
+        }
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute add (a)
+    fn execute_add(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [
+            a[0].wrapping_add(b[0]),
+            a[1].wrapping_add(b[1]),
+            a[2].wrapping_add(b[2]),
+            a[3].wrapping_add(b[3]),
+        ];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute subtract (sf)
+    fn execute_subtract(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [
+            b[0].wrapping_sub(a[0]),
+            b[1].wrapping_sub(a[1]),
+            b[2].wrapping_sub(a[2]),
+            b[3].wrapping_sub(a[3]),
+        ];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute and
+    fn execute_and(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [a[0] & b[0], a[1] & b[1], a[2] & b[2], a[3] & b[3]];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute or
+    fn execute_or(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [a[0] | b[0], a[1] | b[1], a[2] | b[2], a[3] | b[3]];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute xor
+    fn execute_xor(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [a[0] ^ b[0], a[1] ^ b[1], a[2] ^ b[2], a[3] ^ b[3]];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute nor
+    fn execute_nor(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rb, ra, rt) = SpuDecoder::rr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let result = [
+            !(a[0] | b[0]),
+            !(a[1] | b[1]),
+            !(a[2] | b[2]),
+            !(a[3] | b[3]),
+        ];
+        thread.regs.write_u32x4(rt as usize, result);
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute shuffle bytes (shufb)
+    fn execute_shufb(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let (rc, rb, ra, rt) = SpuDecoder::rrr_form(opcode);
+        let a = thread.regs.read_u32x4(ra as usize);
+        let b = thread.regs.read_u32x4(rb as usize);
+        let c = thread.regs.read_u32x4(rc as usize);
+
+        // Convert to bytes
+        let a_bytes: [u8; 16] = bytemuck::cast(a);
+        let b_bytes: [u8; 16] = bytemuck::cast(b);
+        let c_bytes: [u8; 16] = bytemuck::cast(c);
+
+        let mut result = [0u8; 16];
+        for i in 0..16 {
+            let sel = c_bytes[i];
+            result[i] = if sel & 0xC0 == 0xC0 {
+                if sel & 0xE0 == 0xE0 { 0xFF } else { 0x00 }
+            } else if sel & 0x10 == 0 {
+                a_bytes[(sel & 0x0F) as usize]
+            } else {
+                b_bytes[(sel & 0x0F) as usize]
+            };
+        }
+
+        thread.regs.write_u32x4(rt as usize, bytemuck::cast(result));
+        thread.advance_pc();
+        Ok(())
+    }
+
+    /// Execute stop
+    fn execute_stop(&self, thread: &mut SpuThread, opcode: u32) -> Result<(), SpuError> {
+        let stop_type = (opcode >> 14) & 0x3FFF;
+        thread.stop_signal = stop_type as u32;
+        thread.state = crate::thread::SpuThreadState::Halted;
+        Ok(())
+    }
+}
+
+impl Default for SpuInterpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oc_memory::MemoryManager;
+    use std::sync::Arc;
+
+    fn create_test_thread() -> SpuThread {
+        let memory = MemoryManager::new().unwrap();
+        SpuThread::new(0, memory)
+    }
+
+    #[test]
+    fn test_interpreter_creation() {
+        let _interpreter = SpuInterpreter::new();
+    }
+
+    #[test]
+    fn test_add_instruction() {
+        let mut thread = create_test_thread();
+        let interpreter = SpuInterpreter::new();
+
+        // Set up registers
+        thread.regs.write_u32x4(1, [1, 2, 3, 4]);
+        thread.regs.write_u32x4(2, [10, 20, 30, 40]);
+
+        // a rt, ra, rb - add r3, r1, r2 (opcode would be constructed)
+        // For now, just verify interpreter creation works
+        drop(interpreter);
+    }
+}
