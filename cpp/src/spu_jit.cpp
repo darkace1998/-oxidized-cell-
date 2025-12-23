@@ -109,7 +109,7 @@ static void identify_spu_basic_block(const uint8_t* code, size_t size, SpuBasicB
         
         // Check for block-ending instructions
         uint8_t op4 = (instr >> 28) & 0xF;
-        uint8_t op7 = (instr >> 25) & 0x7F;
+        // uint8_t op7 = (instr >> 25) & 0x7F;  // Reserved for future use
         uint16_t op11 = (instr >> 21) & 0x7FF;
         
         // Branch instructions
@@ -166,7 +166,7 @@ static void generate_spu_llvm_ir(SpuBasicBlock* block) {
 /**
  * Emit native machine code for SPU block
  */
-static void emit_spu_machine_code(SpuBasicBlock* block) {
+static void emit_spu_machine_code(SpuBasicBlock* /*block*/) {
     // In a real implementation, this would:
     // 1. Run LLVM optimization passes (SPU has unique pipeline)
     // 2. Use TargetMachine to emit native code

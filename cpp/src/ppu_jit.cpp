@@ -163,7 +163,7 @@ static void generate_llvm_ir(BasicBlock* block) {
  * Emit native machine code from LLVM IR
  * In a full implementation, this would use LLVM's ExecutionEngine
  */
-static void emit_machine_code(BasicBlock* block) {
+static void emit_machine_code(BasicBlock* /*block*/) {
     // In a real implementation, this would:
     // 1. Run LLVM optimization passes
     // 2. Use TargetMachine to emit native code

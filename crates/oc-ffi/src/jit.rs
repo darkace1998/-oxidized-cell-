@@ -3,8 +3,6 @@
 //! This module provides the FFI interface to the C++ JIT compilers for both PPU and SPU.
 //! It includes support for JIT invocation, code cache management, and breakpoint integration.
 
-use std::ptr;
-
 /// Opaque handle to PPU JIT compiler
 #[repr(C)]
 pub struct PpuJit {
