@@ -109,7 +109,6 @@ static void identify_spu_basic_block(const uint8_t* code, size_t size, SpuBasicB
         
         // Check for block-ending instructions
         uint8_t op4 = (instr >> 28) & 0xF;
-        // uint8_t op7 = (instr >> 25) & 0x7F;  // Reserved for future use
         uint16_t op11 = (instr >> 21) & 0x7FF;
         
         // Branch instructions
@@ -154,12 +153,13 @@ static void generate_spu_llvm_ir(SpuBasicBlock* block) {
     // 5. Handle SPU-specific features (channels, DMA)
     
     // Placeholder: allocate code buffer
+    constexpr uint8_t X86_RET_INSTRUCTION = 0xC3;
     block->code_size = block->instructions.size() * 16; // Estimate
     block->compiled_code = malloc(block->code_size);
     
     if (block->compiled_code) {
         // Fill with return instruction as placeholder
-        memset(block->compiled_code, 0xC3, block->code_size); // x86 ret
+        memset(block->compiled_code, X86_RET_INSTRUCTION, block->code_size);
     }
 }
 

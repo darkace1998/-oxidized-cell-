@@ -3,8 +3,15 @@ use std::path::PathBuf;
 
 fn main() {
     // Get the workspace root
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR environment variable not set")
+    );
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("Failed to get parent directory")
+        .parent()
+        .expect("Failed to get workspace root");
     let cpp_src = workspace_root.join("cpp").join("src");
     let cpp_include = workspace_root.join("cpp").join("include");
     
@@ -29,7 +36,8 @@ fn main() {
         .file(cpp_src.join("dma.cpp"));
     
     // Platform-specific settings
-    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH")
+        .expect("CARGO_CFG_TARGET_ARCH environment variable not set");
     if target_arch == "x86_64" {
         build.flag_if_supported("-mavx2");
         build.flag_if_supported("-mbmi2");

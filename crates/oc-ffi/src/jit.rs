@@ -72,6 +72,15 @@ impl PpuJitCompiler {
     }
 
     /// Get compiled code for a given address
+    /// 
+    /// # Safety
+    /// Returns a raw pointer to compiled machine code. The pointer is valid as long as:
+    /// - The JIT compiler instance is alive
+    /// - The code at this address has not been invalidated
+    /// - No cache clear operation has been performed
+    /// 
+    /// Calling compiled code directly requires understanding the calling convention
+    /// and ensuring proper register state.
     pub fn get_compiled(&self, address: u32) -> Option<*mut u8> {
         let ptr = unsafe { oc_ppu_jit_get_compiled(self.handle, address) };
         if ptr.is_null() {
@@ -148,6 +157,15 @@ impl SpuJitCompiler {
     }
 
     /// Get compiled code for a given address
+    /// 
+    /// # Safety
+    /// Returns a raw pointer to compiled machine code. The pointer is valid as long as:
+    /// - The JIT compiler instance is alive
+    /// - The code at this address has not been invalidated
+    /// - No cache clear operation has been performed
+    /// 
+    /// Calling compiled code directly requires understanding the SPU calling convention
+    /// and ensuring proper register state.
     pub fn get_compiled(&self, address: u32) -> Option<*mut u8> {
         let ptr = unsafe { oc_spu_jit_get_compiled(self.handle, address) };
         if ptr.is_null() {

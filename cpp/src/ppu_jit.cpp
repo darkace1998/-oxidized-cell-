@@ -150,12 +150,13 @@ static void generate_llvm_ir(BasicBlock* block) {
     // 5. Handle control flow (branches, calls)
     
     // Placeholder: allocate minimal code buffer
+    constexpr uint8_t X86_RET_INSTRUCTION = 0xC3;
     block->code_size = block->instructions.size() * 16; // Estimate
     block->compiled_code = malloc(block->code_size);
     
     if (block->compiled_code) {
         // Fill with return instruction as placeholder
-        memset(block->compiled_code, 0xC3, block->code_size); // x86 ret
+        memset(block->compiled_code, X86_RET_INSTRUCTION, block->code_size);
     }
 }
 
