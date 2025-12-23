@@ -91,8 +91,8 @@ impl Texture {
         let bytes_per_pixel = match self.format {
             0x85 | 0x8A => 4, // ARGB8, A8R8G8B8
             0x8B => 2,         // R5G6B5
-            0x86 => 8,         // DXT1 (4 bits per pixel)
-            0x87 | 0x88 => 16, // DXT3/DXT5 (8 bits per pixel)
+            0x86 => 1,         // DXT1 (0.5 bytes per pixel in 4x4 blocks = 8 bytes per block)
+            0x87 | 0x88 => 1,  // DXT3/DXT5 (1 byte per pixel in 4x4 blocks = 16 bytes per block)
             _ => 4,
         };
 
@@ -101,7 +101,15 @@ impl Texture {
         let mut h = self.height as u32;
 
         for _ in 0..self.mipmap_levels {
-            size += w * h * bytes_per_pixel;
+            if self.format == 0x86 || self.format == 0x87 || self.format == 0x88 {
+                // Block-compressed formats: size in 4x4 blocks
+                let blocks_w = (w + 3) / 4;
+                let blocks_h = (h + 3) / 4;
+                let block_size = if self.format == 0x86 { 8 } else { 16 };
+                size += blocks_w * blocks_h * block_size;
+            } else {
+                size += w * h * bytes_per_pixel;
+            }
             w = (w / 2).max(1);
             h = (h / 2).max(1);
         }

@@ -12,6 +12,14 @@ pub mod format {
     pub const DEPTH24_STENCIL8: u32 = 0x0E;
 }
 
+/// Depth value conversion constants
+const DEPTH_24BIT_MAX: f32 = 16777215.0; // 2^24 - 1
+
+/// Convert normalized depth (0.0-1.0) to 24-bit depth value
+fn depth_to_24bit(depth: f32) -> u32 {
+    (depth.clamp(0.0, 1.0) * DEPTH_24BIT_MAX) as u32
+}
+
 /// Color buffer descriptor
 #[derive(Debug, Clone)]
 pub struct ColorBuffer {
@@ -164,7 +172,7 @@ impl DepthBuffer {
         match self.format {
             format::DEPTH24_STENCIL8 => {
                 // Convert depth (0.0-1.0) to 24-bit value
-                let depth_24 = (depth.clamp(0.0, 1.0) * 16777215.0) as u32;
+                let depth_24 = depth_to_24bit(depth);
                 let value = (depth_24 << 8) | (stencil as u32);
 
                 memory.write_be32(pixel_offset, value)
@@ -184,7 +192,7 @@ impl DepthBuffer {
         memory: &Arc<MemoryManager>,
         depth: f32,
     ) -> Result<(), String> {
-        let depth_24 = (depth.clamp(0.0, 1.0) * 16777215.0) as u32;
+        let depth_24 = depth_to_24bit(depth);
         let value = depth_24 << 8;
         let pixel_count = (self.width as u32) * (self.height as u32);
 

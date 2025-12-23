@@ -52,7 +52,10 @@ impl VertexAttribute {
             VertexAttributeType::BYTE => 1,
             VertexAttributeType::HALF_FLOAT => 2,
             VertexAttributeType::COMPRESSED => 4,
-            _ => 4,
+            _ => {
+                tracing::warn!("Unknown vertex attribute type, defaulting to 4 bytes");
+                4
+            }
         };
         (self.size as u32) * type_size
     }

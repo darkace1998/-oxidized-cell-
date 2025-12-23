@@ -137,12 +137,7 @@ impl SpirVModule {
 
     /// Get bytecode as byte slice
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.bytecode.as_ptr() as *const u8,
-                self.bytecode.len() * 4,
-            )
-        }
+        bytemuck::cast_slice(&self.bytecode)
     }
 }
 
