@@ -78,13 +78,18 @@ fn main() {
             println!("cargo:rustc-link-lib=static=oc_cpp");
             
             // Link standard C++ library
+            #[cfg(all(target_os = "windows", target_env = "msvc"))]
+            {
+                // MSVC automatically links the C++ standard library
+            }
+            
+            #[cfg(all(target_os = "windows", target_env = "gnu"))]
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+            
             #[cfg(target_os = "linux")]
             println!("cargo:rustc-link-lib=dylib=stdc++");
             
             #[cfg(target_os = "macos")]
-            println!("cargo:rustc-link-lib=dylib=c++");
-            
-            #[cfg(target_os = "windows")]
             println!("cargo:rustc-link-lib=dylib=c++");
         }
         Ok(_) => {
