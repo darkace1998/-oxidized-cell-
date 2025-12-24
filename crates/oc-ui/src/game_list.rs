@@ -153,9 +153,9 @@ impl GameListView {
                     }
 
                     let selected = self.selected_game == Some(*idx);
-                    self.show_game_card(ui, game, selected, card_width, card_height, game_to_launch);
+                    let clicked = self.show_game_card(ui, game, selected, card_width, card_height, game_to_launch);
                     
-                    if ui.response().clicked() {
+                    if clicked {
                         self.selected_game = Some(*idx);
                     }
                 }
@@ -211,7 +211,7 @@ impl GameListView {
         width: f32,
         height: f32,
         game_to_launch: &mut Option<PathBuf>,
-    ) {
+    ) -> bool {
         let frame = if selected {
             egui::Frame::none()
                 .fill(ui.visuals().selection.bg_fill)
@@ -226,14 +226,16 @@ impl GameListView {
                 .inner_margin(8.0)
         };
 
-        frame.show(ui, |ui| {
+        let mut clicked = false;
+        
+        let response = frame.show(ui, |ui| {
             ui.set_width(width);
             ui.set_height(height);
 
             ui.vertical_centered(|ui| {
                 // Icon placeholder
                 let icon_size = egui::vec2(width - 16.0, 180.0);
-                let (rect, _response) = ui.allocate_exact_size(icon_size, egui::Sense::hover());
+                let (rect, response) = ui.allocate_exact_size(icon_size, egui::Sense::click());
                 ui.painter().rect_filled(
                     rect,
                     4.0,
@@ -246,6 +248,10 @@ impl GameListView {
                     egui::FontId::proportional(64.0),
                     ui.visuals().text_color(),
                 );
+                
+                if response.clicked() {
+                    clicked = true;
+                }
 
                 ui.add_space(8.0);
 
@@ -270,6 +276,13 @@ impl GameListView {
                 }
             });
         });
+        
+        // Check if the frame itself was clicked
+        if response.response.clicked() {
+            clicked = true;
+        }
+        
+        clicked
     }
 
     /// Get the currently selected game

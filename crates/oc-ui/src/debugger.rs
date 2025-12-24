@@ -12,8 +12,8 @@ pub struct DebuggerView {
     memory_data: Vec<u8>,
     /// Disassembly address
     disasm_address: String,
-    /// Breakpoints
-    breakpoints: Vec<u32>,
+    /// Breakpoints with enabled state
+    breakpoints: Vec<(u32, bool)>,
     /// New breakpoint address input
     breakpoint_input: String,
 }
@@ -245,7 +245,7 @@ impl DebuggerView {
             ui.text_edit_singleline(&mut self.breakpoint_input);
             if ui.button("Add").clicked() {
                 if let Ok(addr) = self.parse_address(&self.breakpoint_input) {
-                    self.breakpoints.push(addr);
+                    self.breakpoints.push((addr, true));
                     self.breakpoint_input.clear();
                 }
             }
@@ -267,9 +267,9 @@ impl DebuggerView {
 
                     let mut to_remove = None;
 
-                    for (i, &addr) in self.breakpoints.iter().enumerate() {
+                    for (i, (addr, enabled)) in self.breakpoints.iter_mut().enumerate() {
                         ui.label(egui::RichText::new(format!("0x{:08X}", addr)).monospace());
-                        ui.checkbox(&mut true, "");
+                        ui.checkbox(enabled, "");
                         if ui.button("Remove").clicked() {
                             to_remove = Some(i);
                         }
