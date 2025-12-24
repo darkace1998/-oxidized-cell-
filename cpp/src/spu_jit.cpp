@@ -12,6 +12,26 @@
 #include <vector>
 #include <memory>
 
+#ifdef HAVE_LLVM
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Analysis/LoopAnalysisManager.h>
+#include <llvm/Analysis/CGSCCPassManager.h>
+#endif
+
 /**
  * SPU Basic block structure
  */
@@ -21,6 +41,10 @@ struct SpuBasicBlock {
     std::vector<uint32_t> instructions;
     void* compiled_code;
     size_t code_size;
+    
+#ifdef HAVE_LLVM
+    std::unique_ptr<llvm::Function> llvm_func;
+#endif
     
     SpuBasicBlock(uint32_t start) 
         : start_address(start), end_address(start), compiled_code(nullptr), code_size(0) {}
@@ -83,7 +107,32 @@ struct oc_spu_jit_t {
     SpuBreakpointManager breakpoints;
     bool enabled;
     
-    oc_spu_jit_t() : enabled(true) {}
+#ifdef HAVE_LLVM
+    std::unique_ptr<llvm::LLVMContext> context;
+    std::unique_ptr<llvm::Module> module;
+    std::unique_ptr<llvm::orc::LLJIT> jit;
+    llvm::TargetMachine* target_machine;
+#endif
+    
+    oc_spu_jit_t() : enabled(true) {
+#ifdef HAVE_LLVM
+        context = std::make_unique<llvm::LLVMContext>();
+        module = std::make_unique<llvm::Module>("spu_jit", *context);
+        target_machine = nullptr;
+        
+        // Initialize LLVM targets (SPU requires custom backend, use native for now)
+        llvm::InitializeNativeTarget();
+        llvm::InitializeNativeTargetAsmPrinter();
+        llvm::InitializeNativeTargetAsmParser();
+        
+        // Create LLJIT instance
+        auto jit_builder = llvm::orc::LLJITBuilder();
+        auto jit_result = jit_builder.create();
+        if (jit_result) {
+            jit = std::move(*jit_result);
+        }
+#endif
+    }
 };
 
 /**
@@ -145,12 +194,9 @@ static void identify_spu_basic_block(const uint8_t* code, size_t size, SpuBasicB
  * In a full implementation, this would use LLVM C++ API to emit SPU-specific IR
  */
 static void generate_spu_llvm_ir(SpuBasicBlock* block) {
-    // In a real implementation, this would:
-    // 1. Create LLVM Module and Function
-    // 2. For each instruction, emit corresponding LLVM IR
-    // 3. Handle SPU's 128 registers (128-bit SIMD registers)
-    // 4. Emit memory operations (local store access)
-    // 5. Handle SPU-specific features (channels, DMA)
+#ifdef HAVE_LLVM
+    // TODO: Full LLVM IR generation for SPU would go here
+    // SPU has 128 SIMD registers (128-bit each)
     
     // Placeholder: allocate code buffer
     constexpr uint8_t X86_RET_INSTRUCTION = 0xC3;
@@ -161,19 +207,246 @@ static void generate_spu_llvm_ir(SpuBasicBlock* block) {
         // Fill with return instruction as placeholder
         memset(block->compiled_code, X86_RET_INSTRUCTION, block->code_size);
     }
+#else
+    // Without LLVM, use simple placeholder
+    constexpr uint8_t X86_RET_INSTRUCTION = 0xC3;
+    block->code_size = block->instructions.size() * 16; // Estimate
+    block->compiled_code = malloc(block->code_size);
+    
+    if (block->compiled_code) {
+        // Fill with return instruction as placeholder
+        memset(block->compiled_code, X86_RET_INSTRUCTION, block->code_size);
+    }
+#endif
 }
+
+#ifdef HAVE_LLVM
+/**
+ * Emit LLVM IR for common SPU instructions
+ * SPU uses 128-bit SIMD operations on all registers
+ */
+static void emit_spu_instruction(llvm::IRBuilder<>& builder, uint32_t instr,
+                                llvm::Value** regs, llvm::Value* local_store) {
+    uint8_t op4 = (instr >> 28) & 0xF;
+    uint16_t op7 = (instr >> 21) & 0x7F;
+    uint16_t op11 = (instr >> 21) & 0x7FF;
+    uint8_t rt = (instr >> 21) & 0x7F;
+    uint8_t ra = (instr >> 18) & 0x7F;
+    uint8_t rb = (instr >> 14) & 0x7F;
+    uint8_t rc = (instr >> 7) & 0x7F;
+    int16_t i10 = (int16_t)((instr >> 14) & 0x3FF);
+    if (i10 & 0x200) i10 |= 0xFC00; // Sign extend
+    
+    auto& ctx = builder.getContext();
+    auto v4i32_ty = llvm::VectorType::get(llvm::Type::getInt32Ty(ctx), 4, false);
+    auto v4f32_ty = llvm::VectorType::get(llvm::Type::getFloatTy(ctx), 4, false);
+    
+    // Common SPU instruction formats
+    
+    // RI10: Instructions with 10-bit immediate
+    if (op4 == 0b0000 || op4 == 0b0001 || op4 == 0b0010 || op4 == 0b0011) {
+        // ai rt, ra, i10 - Add word immediate
+        if (op11 == 0b00011100000) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* imm_vec = llvm::ConstantVector::getSplat(
+                llvm::ElementCount::getFixed(4),
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), i10));
+            llvm::Value* result = builder.CreateAdd(ra_val, imm_vec);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // andi rt, ra, i10 - And word immediate
+        if (op11 == 0b00010100000) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* imm_vec = llvm::ConstantVector::getSplat(
+                llvm::ElementCount::getFixed(4),
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), i10 & 0x3FF));
+            llvm::Value* result = builder.CreateAnd(ra_val, imm_vec);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+    }
+    
+    // RR format: Register-Register operations
+    if (op4 == 0b0100) {
+        // a rt, ra, rb - Add word
+        if (op11 == 0b00011000000) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* rb_val = builder.CreateLoad(v4i32_ty, regs[rb]);
+            llvm::Value* result = builder.CreateAdd(ra_val, rb_val);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // sf rt, ra, rb - Subtract from word
+        if (op11 == 0b00001000000) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* rb_val = builder.CreateLoad(v4i32_ty, regs[rb]);
+            llvm::Value* result = builder.CreateSub(rb_val, ra_val);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // and rt, ra, rb - And
+        if (op11 == 0b00011000001) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* rb_val = builder.CreateLoad(v4i32_ty, regs[rb]);
+            llvm::Value* result = builder.CreateAnd(ra_val, rb_val);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // or rt, ra, rb - Or
+        if (op11 == 0b00001000001) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* rb_val = builder.CreateLoad(v4i32_ty, regs[rb]);
+            llvm::Value* result = builder.CreateOr(ra_val, rb_val);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // xor rt, ra, rb - Xor
+        if (op11 == 0b01001000001) {
+            llvm::Value* ra_val = builder.CreateLoad(v4i32_ty, regs[ra]);
+            llvm::Value* rb_val = builder.CreateLoad(v4i32_ty, regs[rb]);
+            llvm::Value* result = builder.CreateXor(ra_val, rb_val);
+            builder.CreateStore(result, regs[rt]);
+            return;
+        }
+        // fa rt, ra, rb - Floating Add
+        if (op11 == 0b01011000100) {
+            llvm::Value* ra_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[ra]), v4f32_ty);
+            llvm::Value* rb_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[rb]), v4f32_ty);
+            llvm::Value* result = builder.CreateFAdd(ra_val, rb_val);
+            llvm::Value* result_int = builder.CreateBitCast(result, v4i32_ty);
+            builder.CreateStore(result_int, regs[rt]);
+            return;
+        }
+        // fs rt, ra, rb - Floating Subtract
+        if (op11 == 0b01011000101) {
+            llvm::Value* ra_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[ra]), v4f32_ty);
+            llvm::Value* rb_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[rb]), v4f32_ty);
+            llvm::Value* result = builder.CreateFSub(ra_val, rb_val);
+            llvm::Value* result_int = builder.CreateBitCast(result, v4i32_ty);
+            builder.CreateStore(result_int, regs[rt]);
+            return;
+        }
+        // fm rt, ra, rb - Floating Multiply
+        if (op11 == 0b01011000110) {
+            llvm::Value* ra_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[ra]), v4f32_ty);
+            llvm::Value* rb_val = builder.CreateBitCast(
+                builder.CreateLoad(v4i32_ty, regs[rb]), v4f32_ty);
+            llvm::Value* result = builder.CreateFMul(ra_val, rb_val);
+            llvm::Value* result_int = builder.CreateBitCast(result, v4i32_ty);
+            builder.CreateStore(result_int, regs[rt]);
+            return;
+        }
+    }
+    
+    // Default: nop for unhandled instructions
+}
+
+/**
+ * Create LLVM function for SPU basic block
+ */
+static llvm::Function* create_spu_llvm_function(llvm::Module* module, SpuBasicBlock* block) {
+    auto& ctx = module->getContext();
+    
+    // Function type: void(void* spu_state, void* local_store)
+    auto void_ty = llvm::Type::getVoidTy(ctx);
+    auto ptr_ty = llvm::PointerType::get(llvm::Type::getInt8Ty(ctx), 0);
+    llvm::FunctionType* func_ty = llvm::FunctionType::get(void_ty, {ptr_ty, ptr_ty}, false);
+    
+    // Create function
+    std::string func_name = "spu_block_" + std::to_string(block->start_address);
+    llvm::Function* func = llvm::Function::Create(func_ty,
+        llvm::Function::ExternalLinkage, func_name, module);
+    
+    // Create entry basic block
+    llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(ctx, "entry", func);
+    llvm::IRBuilder<> builder(entry_bb);
+    
+    // Allocate space for 128 SPU registers (each is 128-bit / 4x32-bit vector)
+    auto v4i32_ty = llvm::VectorType::get(llvm::Type::getInt32Ty(ctx), 4, false);
+    
+    llvm::Value* regs[128];
+    
+    for (int i = 0; i < 128; i++) {
+        regs[i] = builder.CreateAlloca(v4i32_ty, nullptr, "r" + std::to_string(i));
+        // Initialize to zero
+        llvm::Value* zero_vec = llvm::ConstantVector::getSplat(
+            llvm::ElementCount::getFixed(4),
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 0));
+        builder.CreateStore(zero_vec, regs[i]);
+    }
+    
+    // Get local store pointer from function argument
+    llvm::Value* local_store = func->getArg(1);
+    
+    // Emit IR for each instruction
+    for (uint32_t instr : block->instructions) {
+        emit_spu_instruction(builder, instr, regs, local_store);
+    }
+    
+    // Return
+    builder.CreateRetVoid();
+    
+    // Verify function
+    std::string error_str;
+    llvm::raw_string_ostream error_stream(error_str);
+    if (llvm::verifyFunction(*func, &error_stream)) {
+        // Function verification failed
+        func->eraseFromParent();
+        return nullptr;
+    }
+    
+    return func;
+}
+
+/**
+ * Apply optimization passes to SPU module
+ */
+static void apply_spu_optimization_passes(llvm::Module* module) {
+    // Create pass managers
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+    
+    // Create pass builder
+    llvm::PassBuilder PB;
+    
+    // Register analyses
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    
+    // Build optimization pipeline (O2 level optimized for SIMD)
+    llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
+    
+    // Run optimization passes
+    MPM.run(*module, MAM);
+}
+#endif
 
 /**
  * Emit native machine code for SPU block
  */
 static void emit_spu_machine_code(SpuBasicBlock* /*block*/) {
-    // In a real implementation, this would:
-    // 1. Run LLVM optimization passes (SPU has unique pipeline)
-    // 2. Use TargetMachine to emit native code
-    // 3. Handle SPU's dual-issue pipeline
-    // 4. Mark code pages as executable
+#ifdef HAVE_LLVM
+    // In a full LLVM implementation with LLJIT:
+    // 1. The function would be added to the JIT's ThreadSafeModule
+    // 2. LLJIT would compile it with SPU-specific optimizations
+    // 3. Dual-issue pipeline hints would be applied
+    // 4. The function pointer would be retrieved via lookup
+    // For now, this is handled in generate_spu_llvm_ir
+#endif
     
-    // The code is already "emitted" in generate_spu_llvm_ir for this placeholder
+    // Placeholder implementation
+    // The code is already "emitted" in generate_spu_llvm_ir for compatibility
 }
 
 extern "C" {
