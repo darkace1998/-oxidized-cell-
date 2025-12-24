@@ -111,9 +111,24 @@ impl MemoryViewer {
         self.follow_address = None;
     }
 
+    /// Calculate page size in bytes (safe calculation avoiding overflow)
+    fn page_size(&self) -> u32 {
+        (self.rows as u32).saturating_mul(self.bytes_per_row as u32)
+    }
+
+    /// Calculate row size in bytes
+    fn row_size(&self) -> u32 {
+        self.bytes_per_row as u32
+    }
+
+    /// Calculate offset for a given row index safely
+    fn row_offset(&self, row: usize) -> u32 {
+        (row as u32).saturating_mul(self.bytes_per_row as u32)
+    }
+
     /// Refresh memory data from the manager
     fn refresh_memory(&mut self) {
-        let size = (self.rows * self.bytes_per_row) as u32;
+        let size = self.page_size();
         
         if let Some(ref memory) = self.memory {
             match memory.read_bytes(self.address, size) {
@@ -185,23 +200,25 @@ impl MemoryViewer {
             ui.separator();
 
             // Navigation buttons
+            let page = self.page_size();
+            let row = self.row_size();
             if ui.button("◀◀").on_hover_text("Previous page").clicked() {
-                self.address = self.address.saturating_sub((self.rows * self.bytes_per_row) as u32);
+                self.address = self.address.saturating_sub(page);
                 self.address_input = format!("0x{:08X}", self.address);
                 self.refresh_memory();
             }
             if ui.button("◀").on_hover_text("Previous row").clicked() {
-                self.address = self.address.saturating_sub(self.bytes_per_row as u32);
+                self.address = self.address.saturating_sub(row);
                 self.address_input = format!("0x{:08X}", self.address);
                 self.refresh_memory();
             }
             if ui.button("▶").on_hover_text("Next row").clicked() {
-                self.address = self.address.saturating_add(self.bytes_per_row as u32);
+                self.address = self.address.saturating_add(row);
                 self.address_input = format!("0x{:08X}", self.address);
                 self.refresh_memory();
             }
             if ui.button("▶▶").on_hover_text("Next page").clicked() {
-                self.address = self.address.saturating_add((self.rows * self.bytes_per_row) as u32);
+                self.address = self.address.saturating_add(page);
                 self.address_input = format!("0x{:08X}", self.address);
                 self.refresh_memory();
             }
@@ -296,7 +313,7 @@ impl MemoryViewer {
 
         // Data rows
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
             let row_end = (row_start + self.bytes_per_row).min(self.cached_data.len());
 
@@ -352,7 +369,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
 
             ui.horizontal(|ui| {
@@ -389,7 +406,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
 
             ui.horizontal(|ui| {
@@ -432,7 +449,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
 
             ui.horizontal(|ui| {
@@ -483,7 +500,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
 
             ui.horizontal(|ui| {
@@ -527,7 +544,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
 
             ui.horizontal(|ui| {
@@ -566,7 +583,7 @@ impl MemoryViewer {
         ui.separator();
 
         for row in 0..self.rows {
-            let row_addr = self.address.wrapping_add((row * self.bytes_per_row) as u32);
+            let row_addr = self.address.wrapping_add(self.row_offset(row));
             let row_start = row * self.bytes_per_row;
             let row_end = (row_start + self.bytes_per_row).min(self.cached_data.len());
 

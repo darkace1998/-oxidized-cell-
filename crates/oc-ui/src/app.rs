@@ -136,10 +136,12 @@ impl OxidizedCellApp {
         
         match EmulatorRunner::new(self.config.clone()) {
             Ok(runner) => {
+                // Get memory reference before wrapping in locks
+                let memory = Arc::clone(runner.memory());
                 let runner = Arc::new(RwLock::new(runner));
                 
                 // Connect memory viewer to the emulator's memory
-                self.memory_viewer.connect(Arc::clone(runner.read().memory()));
+                self.memory_viewer.connect(memory);
                 
                 self.emulator = Some(runner);
                 self.log_viewer.log(LogLevel::Info, "oc-ui", "Emulator runner initialized successfully");
@@ -160,8 +162,9 @@ impl OxidizedCellApp {
         self.init_emulator();
         
         if let Some(ref emulator) = self.emulator {
-            // Load the game
-            match emulator.read().load_game(&game_path) {
+            // Load the game (uses interior mutability via RwLock for thread management)
+            let load_result = emulator.read().load_game(&game_path);
+            match load_result {
                 Ok(loaded_game) => {
                     self.log_viewer.log(
                         LogLevel::Info, 
@@ -559,7 +562,8 @@ impl eframe::App for OxidizedCellApp {
         }
 
         // Error dialog
-        if let Some(ref error) = self.error_message.clone() {
+        let mut clear_error = false;
+        if let Some(ref error) = self.error_message {
             let mut show_error = true;
             egui::Window::new("Error")
                 .open(&mut show_error)
@@ -568,15 +572,18 @@ impl eframe::App for OxidizedCellApp {
                 .show(ctx, |ui| {
                     ui.colored_label(egui::Color32::RED, "⚠ Error");
                     ui.separator();
-                    ui.label(error);
+                    ui.label(error.as_str());
                     ui.separator();
                     if ui.button("OK").clicked() {
-                        self.error_message = None;
+                        clear_error = true;
                     }
                 });
             if !show_error {
-                self.error_message = None;
+                clear_error = true;
             }
+        }
+        if clear_error {
+            self.error_message = None;
         }
 
         // Request repaint if emulator is running
