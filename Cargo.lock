@@ -2607,6 +2607,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-debug"
+version = "0.1.0"
+dependencies = [
+ "oc-core",
+ "oc-memory",
+ "oc-ppu",
+ "oc-rsx",
+ "oc-spu",
+ "parking_lot",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "oc-ffi"
 version = "0.1.0"
 dependencies = [
@@ -2726,6 +2740,7 @@ dependencies = [
  "eframe",
  "egui",
  "oc-core",
+ "oc-debug",
  "tracing",
  "tracing-subscriber",
 ]
