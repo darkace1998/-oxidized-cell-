@@ -1,0 +1,16 @@
+[package]
+name = "emulator_test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+oc-core = { path = "../../crates/oc-core" }
+oc-memory = { path = "../../crates/oc-memory" }
+oc-loader = { path = "../../crates/oc-loader" }
+oc-vfs = { path = "../../crates/oc-vfs" }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -13,7 +13,7 @@ members = [
     "crates/oc-hle",
     "crates/oc-loader",
     "crates/oc-ffi",
-    "crates/oc-ui", "tools/pup-analyzer",
+    "crates/oc-ui", "tools/pup-analyzer", "tools/emulator-test",
 ]
 
 [workspace.package]

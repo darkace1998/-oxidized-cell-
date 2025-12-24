@@ -76,7 +76,7 @@ fn main() {
     }
 
     // Generate report
-    let all_issues: Vec<String> = issues.into_iter().chain(content_issues.clone()).collect();
+    let all_issues: Vec<String> = issues.into_iter().chain(content_issues.iter().cloned()).collect();
     let report = generate_report(&pup, pup_path, &all_issues, &content_issues);
     
     match std::fs::write(report_path, report) {
