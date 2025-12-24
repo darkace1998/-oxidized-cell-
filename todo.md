@@ -24,7 +24,7 @@ The primary focus is on implementing HLE modules and completing the game loading
 | Input System | ✅ Complete | 80% | Medium |
 | VFS | ✅ Complete | 80% | Medium |
 | ELF/Game Loader | ✅ Complete | 90% | Medium |
-| HLE Modules | 🔨 Mostly Complete | 50% | **Critical** |
+| HLE Modules | 🔨 Mostly Complete | 52% | **Critical** |
 | User Interface | 🚧 In Progress | 15% | Medium |
 | Game Loading Pipeline | ❌ Not Started | 0% | **Critical** |
 
@@ -90,7 +90,7 @@ The HLE modules are essential for game execution. Most functions currently retur
 - [x] Handle multi-channel audio output (supports 2ch and 8ch)
 
 #### Image Decoders
-- [ ] **cellPngDec**: Create decoder instance, parse headers, decode images
+- [x] **cellPngDec**: Create decoder instance, parse headers, decode images (PngDecManager with main/sub handle tracking)
 - [ ] **cellJpgDec**: JPEG decoder initialization and decoding
 - [ ] **cellGifDec**: GIF decoder initialization and decoding
 
