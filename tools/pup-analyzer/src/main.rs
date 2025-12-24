@@ -4,7 +4,7 @@
 
 use std::env;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 
 use oc_vfs::formats::pup::{PupFile, PupEntryType};
 
@@ -63,8 +63,21 @@ fn main() {
         }
     }
 
+    // Perform deeper content analysis
+    println!("\n=== Content Analysis ===");
+    let content_issues = analyze_content(&pup, &mut reader);
+    
+    for issue in &content_issues {
+        println!("  - {}", issue);
+    }
+
+    if content_issues.is_empty() {
+        println!("✓ No content issues found!");
+    }
+
     // Generate report
-    let report = generate_report(&pup, pup_path, &issues);
+    let all_issues: Vec<String> = issues.into_iter().chain(content_issues.clone()).collect();
+    let report = generate_report(&pup, pup_path, &all_issues, &content_issues);
     
     match std::fs::write(report_path, report) {
         Ok(_) => println!("\nReport written to: {}", report_path),
@@ -72,7 +85,95 @@ fn main() {
     }
 }
 
-fn generate_report(pup: &PupFile, file_path: &str, issues: &[String]) -> String {
+fn analyze_content(pup: &PupFile, reader: &mut BufReader<File>) -> Vec<String> {
+    let mut issues = Vec::new();
+
+    // Check version info entry
+    if let Some(version_entry) = pup.get_entry(0x100) {
+        if version_entry.size < 4 {
+            issues.push(format!(
+                "Version entry has unusually small size: {} bytes (expected at least 4)",
+                version_entry.size
+            ));
+        }
+        
+        // Try to read version data
+        match reader.seek(SeekFrom::Start(version_entry.offset)) {
+            Ok(_) => {
+                let mut buf = vec![0u8; version_entry.size as usize];
+                if reader.read_exact(&mut buf).is_ok() {
+                    // Check if version string is ASCII/UTF-8
+                    if let Ok(version_str) = std::str::from_utf8(&buf) {
+                        println!("  Version string: {:?}", version_str);
+                    } else {
+                        issues.push("Version entry contains non-UTF-8 data".to_string());
+                    }
+                }
+            }
+            Err(e) => issues.push(format!("Failed to seek to version entry: {}", e)),
+        }
+    }
+
+    // Check for suspiciously small critical entries
+    for entry in &pup.entries {
+        let entry_type = PupEntryType::from(entry.entry_id);
+        match entry_type {
+            PupEntryType::CoreOs | PupEntryType::Kernel => {
+                if entry.size < 1024 * 1024 {
+                    issues.push(format!(
+                        "{} entry is suspiciously small: {} bytes (expected > 1MB)",
+                        entry_type.name(),
+                        entry.size
+                    ));
+                }
+            }
+            PupEntryType::CoreOsLoader => {
+                if entry.size < 256 {
+                    issues.push(format!(
+                        "{} entry is suspiciously small: {} bytes (expected > 256 bytes)",
+                        entry_type.name(),
+                        entry.size
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Check for SELF/ELF headers in binary entries
+    let binary_entries = vec![0x200, 0x300, 0x501, 0x601]; // CoreOS, Kernel, SPU Module, SPU Kernel
+    for &entry_id in &binary_entries {
+        if let Some(entry) = pup.get_entry(entry_id) {
+            if entry.size >= 4 {
+                match reader.seek(SeekFrom::Start(entry.offset)) {
+                    Ok(_) => {
+                        let mut magic = [0u8; 4];
+                        if reader.read_exact(&mut magic).is_ok() {
+                            let entry_type = PupEntryType::from(entry_id);
+                            // Check for common file signatures
+                            if &magic == b"SCE\0" {
+                                println!("  {} has SELF signature (SCE)", entry_type.name());
+                            } else if &magic == b"\x7fELF" {
+                                println!("  {} has ELF signature", entry_type.name());
+                            } else {
+                                println!(
+                                    "  {} has unknown signature: {:02X} {:02X} {:02X} {:02X}",
+                                    entry_type.name(),
+                                    magic[0], magic[1], magic[2], magic[3]
+                                );
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+    }
+
+    issues
+}
+
+fn generate_report(pup: &PupFile, file_path: &str, all_issues: &[String], content_issues: &[String]) -> String {
     let mut report = String::new();
     
     report.push_str("# PS3 Firmware Analysis Report\n\n");
@@ -135,21 +236,40 @@ fn generate_report(pup: &PupFile, file_path: &str, issues: &[String]) -> String 
 
     report.push_str("\n## Validation Results\n\n");
     
-    if issues.is_empty() {
+    let structural_issues: Vec<&String> = all_issues.iter()
+        .filter(|i| !content_issues.contains(i))
+        .collect();
+    
+    if structural_issues.is_empty() {
+        report.push_str("### Structural Validation\n\n");
         report.push_str("✅ **No structural issues found!**\n\n");
         report.push_str("The firmware file structure appears valid:\n");
         report.push_str("- All entries have valid offsets\n");
         report.push_str("- No overlapping entries detected\n");
         report.push_str("- All entries are within file bounds\n");
-        report.push_str("- All entries have non-zero size\n");
+        report.push_str("- All entries have non-zero size\n\n");
     } else {
-        report.push_str(&format!("⚠️ **Found {} issue(s):**\n\n", issues.len()));
-        for issue in issues {
+        report.push_str("### Structural Validation\n\n");
+        report.push_str(&format!("⚠️ **Found {} structural issue(s):**\n\n", structural_issues.len()));
+        for issue in structural_issues {
             report.push_str(&format!("- {}\n", issue));
         }
+        report.push_str("\n");
     }
 
-    report.push_str("\n## Analysis Summary\n\n");
+    if !content_issues.is_empty() {
+        report.push_str("### Content Validation\n\n");
+        report.push_str(&format!("⚠️ **Found {} content issue(s):**\n\n", content_issues.len()));
+        for issue in content_issues {
+            report.push_str(&format!("- {}\n", issue));
+        }
+        report.push_str("\n");
+    } else {
+        report.push_str("### Content Validation\n\n");
+        report.push_str("✅ **No content issues found!**\n\n");
+    }
+
+    report.push_str("## Analysis Summary\n\n");
     
     // Check for expected components
     let has_coreos = pup.entries.iter().any(|e| PupEntryType::from(e.entry_id) == PupEntryType::CoreOs);
@@ -170,12 +290,21 @@ fn generate_report(pup: &PupFile, file_path: &str, issues: &[String]) -> String 
 
     report.push_str("\n## Conclusion\n\n");
     
-    if issues.is_empty() && has_coreos && has_kernel && has_version {
+    if all_issues.is_empty() && has_coreos && has_kernel && has_version {
         report.push_str("✅ The PS3 firmware file appears to be **valid and complete**. ");
-        report.push_str("No major structural issues were detected.\n");
-    } else if !issues.is_empty() {
-        report.push_str("⚠️ The firmware file has **structural issues** that should be reviewed. ");
-        report.push_str("These issues may prevent proper extraction or installation.\n");
+        report.push_str("No major structural or content issues were detected.\n");
+    } else if !all_issues.is_empty() {
+        let critical_issues = content_issues.iter()
+            .filter(|i| i.contains("suspiciously small"))
+            .count();
+        
+        if critical_issues > 0 {
+            report.push_str("⚠️ The firmware file has **potential issues** that should be reviewed. ");
+            report.push_str("Some critical components appear to have unusual sizes.\n");
+        } else {
+            report.push_str("⚠️ The firmware file has **minor issues** that were detected. ");
+            report.push_str("These may not prevent proper extraction or installation.\n");
+        }
     } else {
         report.push_str("⚠️ The firmware file structure is valid but **missing expected components**. ");
         report.push_str("This may indicate an incomplete or specialized firmware package.\n");

@@ -2,7 +2,7 @@
 
 **File:** `/tmp/firmware_test/PS3UPDAT.PUP`
 
-**Analysis Date:** 2025-12-24 08:22:06
+**Analysis Date:** 2025-12-24 08:24:56
 
 ## File Information
 
@@ -31,17 +31,19 @@
 
 | Type | Count | Total Size (MB) |
 |------|-------|-----------------|
-| CoreOS Loader | 1 | 0.00 |
-| License | 1 | 0.30 |
-| Kernel | 1 | 185.43 |
-| Version Info | 1 | 0.00 |
 | CoreOS | 1 | 5.41 |
-| CoreOS Extra | 1 | 0.01 |
+| License | 1 | 0.30 |
 | PRX Module | 1 | 0.00 |
+| Kernel | 1 | 185.43 |
 | SPU Module | 1 | 0.08 |
 | SPU Kernel | 1 | 5.41 |
+| Version Info | 1 | 0.00 |
+| CoreOS Extra | 1 | 0.01 |
+| CoreOS Loader | 1 | 0.00 |
 
 ## Validation Results
+
+### Structural Validation
 
 ✅ **No structural issues found!**
 
@@ -50,6 +52,12 @@ The firmware file structure appears valid:
 - No overlapping entries detected
 - All entries are within file bounds
 - All entries have non-zero size
+
+### Content Validation
+
+⚠️ **Found 1 content issue(s):**
+
+- CoreOS Loader entry is suspiciously small: 3 bytes (expected > 256 bytes)
 
 ## Analysis Summary
 
@@ -61,4 +69,4 @@ The firmware file structure appears valid:
 
 ## Conclusion
 
-✅ The PS3 firmware file appears to be **valid and complete**. No major structural issues were detected.
+⚠️ The firmware file has **potential issues** that should be reviewed. Some critical components appear to have unusual sizes.
