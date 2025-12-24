@@ -3,7 +3,9 @@
 //! This crate integrates all subsystems into a cohesive emulator runner.
 
 pub mod loader;
+pub mod pipeline;
 pub mod runner;
 
 pub use loader::{GameLoader, LoadedGame};
+pub use pipeline::{GameInfo, GamePipeline, GameScanner, MemoryLayoutInfo, ModuleState, SystemModule};
 pub use runner::{EmulatorRunner, RunnerState};

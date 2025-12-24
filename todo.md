@@ -26,7 +26,7 @@ The primary focus is on implementing HLE modules and completing the game loading
 | ELF/Game Loader | ✅ Complete | 90% | Medium |
 | HLE Modules | ✅ Complete | 95% | Medium |
 | User Interface | 🚧 In Progress | 15% | Medium |
-| Game Loading Pipeline | ❌ Not Started | 0% | **Critical** |
+| Game Loading Pipeline | 🔨 Mostly Complete | 71% | **Critical** |
 
 ---
 
@@ -113,13 +113,13 @@ The HLE modules are essential for game execution. Most functions currently retur
 
 ---
 
-### 2. Game Loading Pipeline (Critical - 0% Complete)
+### 2. Game Loading Pipeline (Critical - 71% Complete)
 
-- [ ] Complete game discovery and scanning
-- [ ] Implement PARAM.SFO parsing for game metadata
-- [ ] Connect loader to HLE modules
-- [ ] Initialize all required system modules before game start
-- [ ] Set up proper memory layout for games
+- [x] Complete game discovery and scanning
+- [x] Implement PARAM.SFO parsing for game metadata
+- [x] Connect loader to HLE modules
+- [x] Initialize all required system modules before game start
+- [x] Set up proper memory layout for games
 - [ ] Handle PRX module dependencies
 - [ ] Implement module start/stop lifecycle
 
