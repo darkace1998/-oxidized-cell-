@@ -24,7 +24,7 @@ The primary focus is on implementing HLE modules and completing the game loading
 | Input System | ✅ Complete | 80% | Medium |
 | VFS | ✅ Complete | 80% | Medium |
 | ELF/Game Loader | ✅ Complete | 90% | Medium |
-| HLE Modules | 🔨 Mostly Complete | 58% | **Critical** |
+| HLE Modules | 🔨 Mostly Complete | 60% | **Critical** |
 | User Interface | 🚧 In Progress | 15% | Medium |
 | Game Loading Pipeline | ❌ Not Started | 0% | **Critical** |
 
@@ -96,8 +96,8 @@ The HLE modules are essential for game execution. Most functions currently retur
 
 #### Media Decoders
 - [x] **cellDmux**: Demuxer with DmuxManager, ES management, AU queue handling
-- [ ] **cellVdec**: Video decoder initialization, AU decoding, picture retrieval
-- [ ] **cellAdec**: Audio decoder initialization, AU decoding, PCM retrieval
+- [x] **cellVdec**: Video decoder with VdecManager, sequence management, AU decoding, picture queue
+- [x] **cellAdec**: Audio decoder with AdecManager, sequence management, AU decoding, PCM queue
 - [ ] **cellVpost**: Video post-processor initialization and processing
 
 #### Network Modules
