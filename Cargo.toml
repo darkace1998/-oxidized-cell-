@@ -13,7 +13,7 @@ members = [
     "crates/oc-hle",
     "crates/oc-loader",
     "crates/oc-ffi",
-    "crates/oc-ui",
+    "crates/oc-ui", "tools/pup-analyzer",
 ]
 
 [workspace.package]
@@ -64,6 +64,9 @@ libc = "0.2"
 
 # File paths
 dirs = "5.0"
+
+# Date and time
+chrono = "0.4"
 
 # Testing
 criterion = "0.5"

@@ -10,5 +10,6 @@ description = "Virtual file system for oxidized-cell PS3 emulator"
 oc-core.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
