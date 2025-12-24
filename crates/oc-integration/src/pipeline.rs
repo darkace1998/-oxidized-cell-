@@ -14,6 +14,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+/// Process Data Area (PDA) base address - early in main memory, after null page
+const PDA_BASE_ADDRESS: u32 = 0x0001_0000;
+/// Offset for process ID in PDA
+const PDA_PROCESS_ID_OFFSET: u32 = 0;
+/// Offset for thread ID in PDA
+const PDA_THREAD_ID_OFFSET: u32 = 4;
+
 /// Game information extracted from PARAM.SFO
 #[derive(Debug, Clone, Default)]
 pub struct GameInfo {
@@ -85,9 +92,7 @@ impl GameScanner {
 
         // Check if this directory is a PS3 game directory itself
         if self.is_game_directory(dir) {
-            if let Some(game_info) = self.extract_game_info(dir)? {
-                self.games.insert(game_info.title_id.clone(), game_info);
-            }
+            self.try_add_game(dir)?;
             return Ok(());
         }
 
@@ -104,26 +109,36 @@ impl GameScanner {
                 let path = entry.path();
                 if path.is_dir() {
                     if self.is_game_directory(&path) {
-                        if let Some(game_info) = self.extract_game_info(&path)? {
-                            self.games.insert(game_info.title_id.clone(), game_info);
-                        }
+                        self.try_add_game(&path)?;
                     } else {
                         // Recursively scan subdirectories (one level deep)
-                        if let Ok(sub_entries) = fs::read_dir(&path) {
-                            for sub_entry in sub_entries.flatten() {
-                                let sub_path = sub_entry.path();
-                                if sub_path.is_dir() && self.is_game_directory(&sub_path) {
-                                    if let Some(game_info) = self.extract_game_info(&sub_path)? {
-                                        self.games.insert(game_info.title_id.clone(), game_info);
-                                    }
-                                }
-                            }
-                        }
+                        self.scan_subdirectory_for_games(&path)?;
                     }
                 }
             }
         }
 
+        Ok(())
+    }
+
+    /// Scan a subdirectory for game directories (one level deep)
+    fn scan_subdirectory_for_games(&mut self, dir: &Path) -> Result<()> {
+        if let Ok(sub_entries) = fs::read_dir(dir) {
+            for sub_entry in sub_entries.flatten() {
+                let sub_path = sub_entry.path();
+                if sub_path.is_dir() && self.is_game_directory(&sub_path) {
+                    self.try_add_game(&sub_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Try to extract game info and add it to the games map
+    fn try_add_game(&mut self, dir: &Path) -> Result<()> {
+        if let Some(game_info) = self.extract_game_info(dir)? {
+            self.games.insert(game_info.title_id.clone(), game_info);
+        }
         Ok(())
     }
 
@@ -627,12 +642,11 @@ impl GamePipeline {
 
         // Initialize process data area (PDA) at a known location within main memory
         // This is where PS3 system information is stored
-        let pda_addr = 0x0001_0000u32; // Early in main memory, after null page
         
         // Write some initial PDA values
         // Note: These are stub values - real values would come from the system
-        self.memory.write_be32(pda_addr, 0)?; // Process ID placeholder
-        self.memory.write_be32(pda_addr + 4, 0)?; // Thread ID placeholder
+        self.memory.write_be32(PDA_BASE_ADDRESS + PDA_PROCESS_ID_OFFSET, 0)?; // Process ID placeholder
+        self.memory.write_be32(PDA_BASE_ADDRESS + PDA_THREAD_ID_OFFSET, 0)?; // Thread ID placeholder
 
         debug!(
             "Memory layout configured: main=0x{:08x}-0x{:08x}, user=0x{:08x}-0x{:08x}",
