@@ -10,6 +10,7 @@ use crate::sync::{cond, event, mutex, rwlock, semaphore};
 use crate::syscall_numbers::*;
 use crate::thread::ThreadManager;
 use oc_core::error::KernelError;
+use oc_vfs::VirtualFileSystem;
 use std::sync::Arc;
 
 /// System call handler with state management
@@ -18,6 +19,7 @@ pub struct SyscallHandler {
     process_manager: Arc<ProcessManager>,
     thread_manager: Arc<ThreadManager>,
     memory_manager: Arc<MemoryManager>,
+    vfs: Arc<VirtualFileSystem>,
 }
 
 impl SyscallHandler {
@@ -28,6 +30,18 @@ impl SyscallHandler {
             process_manager: Arc::new(ProcessManager::new()),
             thread_manager: Arc::new(ThreadManager::new()),
             memory_manager: Arc::new(MemoryManager::new()),
+            vfs: Arc::new(VirtualFileSystem::new()),
+        }
+    }
+
+    /// Create a new syscall handler with a custom VFS
+    pub fn with_vfs(vfs: Arc<VirtualFileSystem>) -> Self {
+        Self {
+            object_manager: Arc::new(ObjectManager::new()),
+            process_manager: Arc::new(ProcessManager::new()),
+            thread_manager: Arc::new(ThreadManager::new()),
+            memory_manager: Arc::new(MemoryManager::new()),
+            vfs,
         }
     }
 
@@ -49,6 +63,11 @@ impl SyscallHandler {
     /// Get memory manager reference
     pub fn memory_manager(&self) -> &Arc<MemoryManager> {
         &self.memory_manager
+    }
+
+    /// Get VFS reference
+    pub fn vfs(&self) -> &Arc<VirtualFileSystem> {
+        &self.vfs
     }
 
     /// Handle a system call
@@ -481,7 +500,7 @@ impl SyscallHandler {
                 let flags = args[1] as u32;
                 let mode = args[2] as u32;
                 let fd =
-                    fs::syscalls::sys_fs_open(&self.object_manager, path, flags, mode)?;
+                    fs::syscalls::sys_fs_open(&self.object_manager, &self.vfs, path, flags, mode)?;
                 Ok(fd as i64)
             }
 
@@ -527,7 +546,7 @@ impl SyscallHandler {
             SYS_FS_STAT => {
                 // In real impl, would read path from memory at args[0]
                 let path = "/dev_hdd0/test.txt";
-                let stat = fs::syscalls::sys_fs_stat(path)?;
+                let stat = fs::syscalls::sys_fs_stat(&self.vfs, path)?;
                 // In real implementation, would write stat to memory at args[1]
                 Ok(0)
             }
@@ -535,7 +554,7 @@ impl SyscallHandler {
             SYS_FS_OPENDIR => {
                 // In real impl, would read path from memory at args[0]
                 let path = "/dev_hdd0/";
-                let dir_id = fs::syscalls::sys_fs_opendir(&self.object_manager, path)?;
+                let dir_id = fs::syscalls::sys_fs_opendir(&self.object_manager, &self.vfs, path)?;
                 Ok(dir_id as i64)
             }
 
@@ -553,6 +572,36 @@ impl SyscallHandler {
             SYS_FS_CLOSEDIR => {
                 let dir_id = args[0] as u32;
                 fs::syscalls::sys_fs_closedir(&self.object_manager, dir_id)?;
+                Ok(0)
+            }
+
+            SYS_FS_MKDIR => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_dir";
+                let mode = args[1] as u32;
+                fs::syscalls::sys_fs_mkdir(&self.vfs, path, mode)?;
+                Ok(0)
+            }
+
+            SYS_FS_RMDIR => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_dir";
+                fs::syscalls::sys_fs_rmdir(&self.vfs, path)?;
+                Ok(0)
+            }
+
+            SYS_FS_UNLINK => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_file.txt";
+                fs::syscalls::sys_fs_unlink(&self.vfs, path)?;
+                Ok(0)
+            }
+
+            SYS_FS_RENAME => {
+                // In real impl, would read paths from memory
+                let old_path = "/dev_hdd0/old_file.txt";
+                let new_path = "/dev_hdd0/new_file.txt";
+                fs::syscalls::sys_fs_rename(&self.vfs, old_path, new_path)?;
                 Ok(0)
             }
 

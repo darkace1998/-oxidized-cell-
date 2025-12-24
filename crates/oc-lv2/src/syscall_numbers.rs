@@ -99,6 +99,10 @@ pub const SYS_FS_STAT: u64 = 807;
 pub const SYS_FS_OPENDIR: u64 = 811;
 pub const SYS_FS_READDIR: u64 = 812;
 pub const SYS_FS_CLOSEDIR: u64 = 814;
+pub const SYS_FS_MKDIR: u64 = 809;
+pub const SYS_FS_RMDIR: u64 = 831;
+pub const SYS_FS_UNLINK: u64 = 810;
+pub const SYS_FS_RENAME: u64 = 829;
 
 // TTY
 pub const SYS_TTY_WRITE: u64 = 403;
