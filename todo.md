@@ -24,7 +24,7 @@ The primary focus is on implementing HLE modules and completing the game loading
 | Input System | ✅ Complete | 80% | Medium |
 | VFS | ✅ Complete | 80% | Medium |
 | ELF/Game Loader | ✅ Complete | 90% | Medium |
-| HLE Modules | 🔨 Mostly Complete | 40% | **Critical** |
+| HLE Modules | 🔨 Mostly Complete | 42% | **Critical** |
 | User Interface | 🚧 In Progress | 15% | Medium |
 | Game Loading Pipeline | ❌ Not Started | 0% | **Critical** |
 
@@ -107,7 +107,7 @@ The HLE modules are essential for game execution. Most functions currently retur
 
 #### Other Modules
 - [ ] **cellFont**: Font library, glyph rendering
-- [ ] **cellGame**: Game boot type detection, parameter retrieval
+- [x] **cellGame**: Game boot type detection (GameManager with boot_check), parameter retrieval (PARAM.SFO parameters)
 - [ ] **cellSaveData**: Save data loading/saving through VFS
 - [ ] **libSre**: Regex pattern compilation and matching
 
