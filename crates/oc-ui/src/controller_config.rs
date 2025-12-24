@@ -3,6 +3,12 @@
 use eframe::egui;
 use std::collections::HashMap;
 
+/// Maximum number of buttons supported by controllers
+const MAX_BUTTONS: usize = 16;
+
+/// Maximum number of axes supported by controllers
+const MAX_AXES: usize = 6;
+
 /// Controller type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControllerType {
@@ -267,8 +273,8 @@ impl ControllerConfig {
                 index: 0,
                 name: String::from("Xbox Controller"),
                 connected: true,
-                buttons: vec![false; 16],
-                axes: vec![0.0; 6],
+                buttons: vec![false; MAX_BUTTONS],
+                axes: vec![0.0; MAX_AXES],
             },
         ];
         self.status_message = format!("Found {} controller(s)", self.connected_controllers.len());

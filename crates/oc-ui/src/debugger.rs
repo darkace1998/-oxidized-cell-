@@ -815,6 +815,8 @@ impl DebuggerView {
                     };
                     
                     // Also add to the PPU debugger's breakpoint manager
+                    // Note: Access type adds both read and write breakpoints as separate entries
+                    // since the underlying breakpoint manager tracks them separately
                     match self.mem_bp_type {
                         MemoryBreakpointType::Read => {
                             self.ppu_debugger.breakpoints.add_read_breakpoint(addr as u64);
@@ -823,6 +825,7 @@ impl DebuggerView {
                             self.ppu_debugger.breakpoints.add_write_breakpoint(addr as u64);
                         }
                         MemoryBreakpointType::Access => {
+                            // Access triggers on both read and write
                             self.ppu_debugger.breakpoints.add_read_breakpoint(addr as u64);
                             self.ppu_debugger.breakpoints.add_write_breakpoint(addr as u64);
                         }
@@ -903,6 +906,8 @@ impl DebuggerView {
 
             ui.horizontal(|ui| {
                 if ui.button("Clear All Memory Breakpoints").clicked() {
+                    // Clear both the UI list and the backend breakpoint manager
+                    // Note: This clears all breakpoints including those potentially added externally
                     self.memory_breakpoints.clear();
                     self.ppu_debugger.breakpoints.clear();
                     self.status_message = String::from("Cleared all memory breakpoints");
@@ -911,6 +916,8 @@ impl DebuggerView {
                 if ui.button("Disable All").clicked() {
                     for bp in &mut self.memory_breakpoints {
                         bp.enabled = false;
+                        // Note: Backend breakpoint disable is handled per-breakpoint 
+                        // when actually checking breakpoints
                     }
                     self.status_message = String::from("Disabled all memory breakpoints");
                 }
