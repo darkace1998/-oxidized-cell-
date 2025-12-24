@@ -494,6 +494,9 @@ impl VulkanBackend {
             (VertexAttributeType::HALF_FLOAT, 2, _) => vk::Format::R16G16_SFLOAT,
             (VertexAttributeType::HALF_FLOAT, 3, _) => vk::Format::R16G16B16_SFLOAT,
             (VertexAttributeType::HALF_FLOAT, 4, _) => vk::Format::R16G16B16A16_SFLOAT,
+            // COMPRESSED: Compressed vertex data (CMP) - typically 10/10/10/2 format
+            (VertexAttributeType::COMPRESSED, _, true) => vk::Format::A2B10G10R10_SNORM_PACK32,
+            (VertexAttributeType::COMPRESSED, _, false) => vk::Format::A2B10G10R10_UINT_PACK32,
             _ => vk::Format::R32G32B32A32_SFLOAT, // Default fallback
         }
     }
@@ -780,13 +783,15 @@ impl GraphicsBackend for VulkanBackend {
         if let (Some(device), Some(cmd_buffer), Some(queue)) =
             (&self.device, self.current_cmd_buffer, self.graphics_queue)
         {
-            unsafe {
-                // End render pass if we're still in one
-                if self.in_render_pass {
+            // End render pass if we're still in one
+            if self.in_render_pass {
+                unsafe {
                     device.cmd_end_render_pass(cmd_buffer);
-                    self.in_render_pass = false;
                 }
+                self.in_render_pass = false;
+            }
 
+            unsafe {
                 if let Err(e) = device.end_command_buffer(cmd_buffer) {
                     tracing::error!("Failed to end command buffer: {:?}", e);
                     return;
@@ -858,8 +863,8 @@ impl GraphicsBackend for VulkanBackend {
 
             unsafe {
                 device.cmd_begin_render_pass(cmd_buffer, &render_pass_info, vk::SubpassContents::INLINE);
-                self.in_render_pass = true;
             }
+            self.in_render_pass = true;
         }
     }
 
