@@ -86,6 +86,16 @@ impl RsxThread {
                     self.flush_vertices();
                 }
             }
+            // NV4097_DRAW_ARRAYS
+            0x1810 => {
+                self.draw_arrays(data);
+                return;
+            }
+            // NV4097_DRAW_INDEX_ARRAY
+            0x1814 => {
+                self.draw_indexed(data);
+                return;
+            }
             _ => {}
         }
         
@@ -110,6 +120,54 @@ impl RsxThread {
             self.gfx_state.clear_depth,
             self.gfx_state.clear_stencil,
         );
+    }
+
+    /// Draw arrays command
+    fn draw_arrays(&mut self, data: u32) {
+        let first = data & 0xFFFFFF;
+        let count = (data >> 24) & 0xFF;
+        
+        tracing::trace!("Draw arrays: first={}, count={}", first, count);
+        
+        // Convert primitive type
+        use crate::backend::PrimitiveType;
+        let primitive = match self.gfx_state.primitive_type {
+            1 => PrimitiveType::Points,
+            2 => PrimitiveType::Lines,
+            3 => PrimitiveType::LineLoop,
+            4 => PrimitiveType::LineStrip,
+            5 => PrimitiveType::Triangles,
+            6 => PrimitiveType::TriangleStrip,
+            7 => PrimitiveType::TriangleFan,
+            8 => PrimitiveType::Quads,
+            _ => PrimitiveType::Triangles, // Default
+        };
+        
+        self.backend.draw_arrays(primitive, first, count);
+    }
+
+    /// Draw indexed command
+    fn draw_indexed(&mut self, data: u32) {
+        let first = data & 0xFFFFFF;
+        let count = (data >> 24) & 0xFF;
+        
+        tracing::trace!("Draw indexed: first={}, count={}", first, count);
+        
+        // Convert primitive type
+        use crate::backend::PrimitiveType;
+        let primitive = match self.gfx_state.primitive_type {
+            1 => PrimitiveType::Points,
+            2 => PrimitiveType::Lines,
+            3 => PrimitiveType::LineLoop,
+            4 => PrimitiveType::LineStrip,
+            5 => PrimitiveType::Triangles,
+            6 => PrimitiveType::TriangleStrip,
+            7 => PrimitiveType::TriangleFan,
+            8 => PrimitiveType::Quads,
+            _ => PrimitiveType::Triangles, // Default
+        };
+        
+        self.backend.draw_indexed(primitive, first, count);
     }
 
     /// Flush accumulated vertices
