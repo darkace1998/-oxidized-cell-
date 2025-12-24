@@ -195,6 +195,34 @@ impl ModuleRegistry {
         pad.register(0x1CF98800, |_| 0); // cellPadGetData
         pad.register(0x6BC09C61, |_| 0); // cellPadGetInfo2
         self.modules.insert("cellPad".to_string(), pad);
+
+        // cellAudio - Audio output
+        let mut audio = HleModule::new("cellAudio");
+        audio.register(0x56DFE179, |_| 0); // cellAudioInit
+        audio.register(0x04AF134E, |_| 0); // cellAudioQuit
+        audio.register(0xCA5AC370, |_| 0); // cellAudioPortOpen
+        audio.register(0x5B1E2C73, |_| 0); // cellAudioPortClose
+        audio.register(0x74A66AF0, |_| 0); // cellAudioPortStart
+        audio.register(0x8C628DDE, |_| 0); // cellAudioPortStop
+        audio.register(0x4109D08C, |_| 0); // cellAudioGetPortConfig
+        audio.register(0x377E0CD9, |_| 0); // cellAudioCreateNotifyEventQueue
+        audio.register(0x0D831209, |_| 0); // cellAudioSetNotifyEventQueue
+        audio.register(0xF9CD769B, |_| 0); // cellAudioRemoveNotifyEventQueue
+        self.modules.insert("cellAudio".to_string(), audio);
+
+        // cellFs - File system
+        let mut fs = HleModule::new("cellFs");
+        fs.register(0x718BF5F8, |_| 0); // cellFsOpen
+        fs.register(0x2CB51F0D, |_| 0); // cellFsClose
+        fs.register(0xB1840098, |_| 0); // cellFsRead
+        fs.register(0x5B0E89A3, |_| 0); // cellFsWrite
+        fs.register(0x4D5FF8E2, |_| 0); // cellFsLseek
+        fs.register(0xCBB83B20, |_| 0); // cellFsFstat
+        fs.register(0xAADD4A40, |_| 0); // cellFsStat
+        fs.register(0xB37F693E, |_| 0); // cellFsOpendir
+        fs.register(0x5C74903D, |_| 0); // cellFsReaddir
+        fs.register(0xA3EBFA2B, |_| 0); // cellFsClosedir
+        self.modules.insert("cellFs".to_string(), fs);
     }
 
     /// Get a module by name
@@ -256,6 +284,8 @@ mod tests {
         
         // Test other system modules
         assert!(registry.get_module("cellPad").is_some());
+        assert!(registry.get_module("cellAudio").is_some());
+        assert!(registry.get_module("cellFs").is_some());
         
         // Test function lookup
         let func = registry.find_function("cellGcmSys", 0x21AC3697);
@@ -273,6 +303,8 @@ mod tests {
         assert!(registry.find_function("cellVdec", 0xC982A84A).is_some());
         assert!(registry.find_function("cellAdec", 0x2CFFC4C9).is_some());
         assert!(registry.find_function("cellSsl", 0x0C34B7A5).is_some());
+        assert!(registry.find_function("cellAudio", 0x56DFE179).is_some());
+        assert!(registry.find_function("cellFs", 0x718BF5F8).is_some());
         
         // Test that non-existent functions return None
         assert!(registry.find_function("cellGcmSys", 0xFFFFFFFF).is_none());
