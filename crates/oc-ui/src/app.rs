@@ -7,11 +7,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use parking_lot::RwLock;
 
+use crate::controller_config::ControllerConfig;
 use crate::debugger::DebuggerView;
 use crate::game_list::{GameInfo, GameListView};
 use crate::log_viewer::{LogViewer, LogLevel};
 use crate::memory_viewer::MemoryViewer;
 use crate::settings::SettingsPanel;
+use crate::shader_debugger::ShaderDebugger;
 use crate::themes::Theme;
 
 /// Main application state
@@ -30,6 +32,10 @@ pub struct OxidizedCellApp {
     show_log_viewer: bool,
     /// Show memory viewer window
     show_memory_viewer: bool,
+    /// Show shader debugger window
+    show_shader_debugger: bool,
+    /// Show controller config window
+    show_controller_config: bool,
     /// Current theme
     theme: Theme,
     /// Game list view
@@ -42,6 +48,10 @@ pub struct OxidizedCellApp {
     log_viewer: LogViewer,
     /// Memory viewer panel
     memory_viewer: MemoryViewer,
+    /// Shader debugger panel
+    shader_debugger: ShaderDebugger,
+    /// Controller configuration panel
+    controller_config: ControllerConfig,
     /// Emulator runner (wrapped in Arc<RwLock> for thread safety)
     emulator: Option<Arc<RwLock<EmulatorRunner>>>,
     /// Currently loaded game path
@@ -64,6 +74,8 @@ pub enum View {
     Debugger,
     LogViewer,
     MemoryViewer,
+    ShaderDebugger,
+    ControllerConfig,
 }
 
 impl OxidizedCellApp {
@@ -103,12 +115,16 @@ impl OxidizedCellApp {
             show_performance: false,
             show_log_viewer: false,
             show_memory_viewer: false,
+            show_shader_debugger: false,
+            show_controller_config: false,
             theme,
             game_list,
             debugger: DebuggerView::new(),
             settings_panel: SettingsPanel::new(),
             log_viewer,
             memory_viewer: MemoryViewer::new(),
+            shader_debugger: ShaderDebugger::new(),
+            controller_config: ControllerConfig::new(),
             emulator: None,
             loaded_game_path: None,
             fps: 0.0,
@@ -351,6 +367,21 @@ impl eframe::App for OxidizedCellApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.selectable_label(
+                        self.current_view == View::ShaderDebugger,
+                        "Shader Debugger"
+                    ).clicked() {
+                        self.current_view = View::ShaderDebugger;
+                        ui.close_menu();
+                    }
+                    if ui.selectable_label(
+                        self.current_view == View::ControllerConfig,
+                        "Controller Config"
+                    ).clicked() {
+                        self.current_view = View::ControllerConfig;
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.checkbox(&mut self.show_performance, "Performance Overlay").clicked() {
                         ui.close_menu();
                     }
@@ -362,6 +393,12 @@ impl eframe::App for OxidizedCellApp {
                         if self.show_memory_viewer {
                             self.init_emulator();
                         }
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.show_shader_debugger, "Shader Debugger Window").clicked() {
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.show_controller_config, "Controller Config Window").clicked() {
                         ui.close_menu();
                     }
                 });
@@ -457,6 +494,15 @@ impl eframe::App for OxidizedCellApp {
                     ui.separator();
                     self.memory_viewer.show(ui);
                 }
+                View::ShaderDebugger => {
+                    self.shader_debugger.show(ui);
+                }
+                View::ControllerConfig => {
+                    if self.controller_config.show(ui) {
+                        // Config changed, save it
+                        let _ = self.config.save();
+                    }
+                }
             }
         });
         
@@ -498,6 +544,29 @@ impl eframe::App for OxidizedCellApp {
                 .default_size([700.0, 500.0])
                 .show(ctx, |ui| {
                     self.memory_viewer.show(ui);
+                });
+        }
+
+        // Shader debugger window (floating)
+        if self.show_shader_debugger {
+            egui::Window::new("Shader Debugger")
+                .open(&mut self.show_shader_debugger)
+                .default_size([800.0, 600.0])
+                .show(ctx, |ui| {
+                    self.shader_debugger.show(ui);
+                });
+        }
+
+        // Controller config window (floating)
+        if self.show_controller_config {
+            egui::Window::new("Controller Configuration")
+                .open(&mut self.show_controller_config)
+                .default_size([700.0, 550.0])
+                .show(ctx, |ui| {
+                    if self.controller_config.show(ui) {
+                        // Config changed
+                        let _ = self.config.save();
+                    }
                 });
         }
         

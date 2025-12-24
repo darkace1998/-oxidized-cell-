@@ -4,6 +4,29 @@ use eframe::egui;
 use oc_debug::{PpuDebugger, SpuDebugger, RsxDebugger, Profiler, PpuDisassembler};
 use oc_debug::ppu_debugger::DebugState;
 
+/// Watchpoint entry for UI display
+#[derive(Debug, Clone)]
+pub struct Watchpoint {
+    /// Unique ID
+    pub id: u32,
+    /// Address to watch
+    pub address: u64,
+    /// Size in bytes
+    pub size: u32,
+    /// Watch for read access
+    pub on_read: bool,
+    /// Watch for write access
+    pub on_write: bool,
+    /// Enabled state
+    pub enabled: bool,
+    /// Hit count
+    pub hit_count: u64,
+    /// Optional label
+    pub label: String,
+    /// Last value seen (for comparison)
+    pub last_value: Option<u64>,
+}
+
 /// Debugger view state
 pub struct DebuggerView {
     /// Current debugger tab
@@ -20,6 +43,26 @@ pub struct DebuggerView {
     breakpoints: Vec<(u32, bool)>,
     /// New breakpoint address input
     breakpoint_input: String,
+    /// Watchpoints list
+    watchpoints: Vec<Watchpoint>,
+    /// New watchpoint address input
+    watchpoint_address_input: String,
+    /// New watchpoint size input
+    watchpoint_size_input: String,
+    /// New watchpoint read flag
+    watchpoint_on_read: bool,
+    /// New watchpoint write flag
+    watchpoint_on_write: bool,
+    /// Next watchpoint ID
+    next_watchpoint_id: u32,
+    /// Memory breakpoints list (read/write breakpoints)
+    memory_breakpoints: Vec<MemoryBreakpoint>,
+    /// New memory breakpoint address input
+    mem_bp_address_input: String,
+    /// New memory breakpoint type
+    mem_bp_type: MemoryBreakpointType,
+    /// Next memory breakpoint ID
+    next_mem_bp_id: u32,
     /// PPU Debugger
     ppu_debugger: PpuDebugger,
     /// SPU Debugger
@@ -32,6 +75,41 @@ pub struct DebuggerView {
     status_message: String,
 }
 
+/// Memory breakpoint entry
+#[derive(Debug, Clone)]
+pub struct MemoryBreakpoint {
+    /// Unique ID
+    pub id: u32,
+    /// Address
+    pub address: u64,
+    /// Type (read/write/access)
+    pub bp_type: MemoryBreakpointType,
+    /// Enabled state
+    pub enabled: bool,
+    /// Hit count
+    pub hit_count: u64,
+    /// Optional label
+    pub label: String,
+}
+
+/// Memory breakpoint type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryBreakpointType {
+    Read,
+    Write,
+    Access,
+}
+
+impl MemoryBreakpointType {
+    fn label(&self) -> &'static str {
+        match self {
+            MemoryBreakpointType::Read => "Read",
+            MemoryBreakpointType::Write => "Write",
+            MemoryBreakpointType::Access => "Read/Write",
+        }
+    }
+}
+
 /// Debugger tabs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DebuggerTab {
@@ -39,6 +117,8 @@ enum DebuggerTab {
     Memory,
     Disassembly,
     Breakpoints,
+    Watchpoints,
+    MemoryBreakpoints,
     Profiler,
 }
 
@@ -60,6 +140,16 @@ impl DebuggerView {
             disassembled: Vec::new(),
             breakpoints: Vec::new(),
             breakpoint_input: String::new(),
+            watchpoints: Vec::new(),
+            watchpoint_address_input: String::new(),
+            watchpoint_size_input: String::from("4"),
+            watchpoint_on_read: false,
+            watchpoint_on_write: true,
+            next_watchpoint_id: 0,
+            memory_breakpoints: Vec::new(),
+            mem_bp_address_input: String::new(),
+            mem_bp_type: MemoryBreakpointType::Write,
+            next_mem_bp_id: 0,
             ppu_debugger: PpuDebugger::new(),
             spu_debugger: SpuDebugger::new(),
             rsx_debugger: RsxDebugger::new(),
@@ -115,6 +205,8 @@ impl DebuggerView {
             ui.selectable_value(&mut self.current_tab, DebuggerTab::Memory, "Memory");
             ui.selectable_value(&mut self.current_tab, DebuggerTab::Disassembly, "Disassembly");
             ui.selectable_value(&mut self.current_tab, DebuggerTab::Breakpoints, "Breakpoints");
+            ui.selectable_value(&mut self.current_tab, DebuggerTab::Watchpoints, "Watchpoints");
+            ui.selectable_value(&mut self.current_tab, DebuggerTab::MemoryBreakpoints, "Memory BPs");
             ui.selectable_value(&mut self.current_tab, DebuggerTab::Profiler, "Profiler");
         });
 
@@ -176,6 +268,8 @@ impl DebuggerView {
                 DebuggerTab::Memory => self.show_memory(ui),
                 DebuggerTab::Disassembly => self.show_disassembly(ui),
                 DebuggerTab::Breakpoints => self.show_breakpoints(ui),
+                DebuggerTab::Watchpoints => self.show_watchpoints(ui),
+                DebuggerTab::MemoryBreakpoints => self.show_memory_breakpoints(ui),
                 DebuggerTab::Profiler => self.show_profiler(ui),
             }
         });
@@ -581,6 +675,253 @@ impl DebuggerView {
             u32::from_str_radix(&s[2..], 16).map_err(|_| ())
         } else {
             s.parse().map_err(|_| ())
+        }
+    }
+
+    fn show_watchpoints(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Watchpoints");
+        ui.add_space(10.0);
+
+        ui.label("Watchpoints pause execution when a memory location is accessed.");
+        ui.add_space(5.0);
+
+        // Add watchpoint form
+        ui.horizontal(|ui| {
+            ui.label("Address:");
+            ui.add(egui::TextEdit::singleline(&mut self.watchpoint_address_input)
+                .desired_width(100.0)
+                .hint_text("0x00000000"));
+
+            ui.label("Size:");
+            ui.add(egui::TextEdit::singleline(&mut self.watchpoint_size_input)
+                .desired_width(40.0));
+
+            ui.checkbox(&mut self.watchpoint_on_read, "Read");
+            ui.checkbox(&mut self.watchpoint_on_write, "Write");
+
+            if ui.button("Add Watchpoint").clicked() {
+                if let Ok(addr) = self.parse_address(&self.watchpoint_address_input) {
+                    let size: u32 = self.watchpoint_size_input.parse().unwrap_or(4);
+                    let watchpoint = Watchpoint {
+                        id: self.next_watchpoint_id,
+                        address: addr as u64,
+                        size,
+                        on_read: self.watchpoint_on_read,
+                        on_write: self.watchpoint_on_write,
+                        enabled: true,
+                        hit_count: 0,
+                        label: String::new(),
+                        last_value: None,
+                    };
+                    self.watchpoints.push(watchpoint);
+                    self.next_watchpoint_id += 1;
+                    self.watchpoint_address_input.clear();
+                    self.status_message = format!("Added watchpoint at 0x{:08X}", addr);
+                } else {
+                    self.status_message = String::from("Invalid address format");
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
+        if self.watchpoints.is_empty() {
+            ui.label("No watchpoints set.");
+        } else {
+            egui::Grid::new("watchpoints_grid")
+                .striped(true)
+                .num_columns(7)
+                .show(ui, |ui| {
+                    ui.strong("Address");
+                    ui.strong("Size");
+                    ui.strong("Type");
+                    ui.strong("Enabled");
+                    ui.strong("Hits");
+                    ui.strong("Label");
+                    ui.strong("Actions");
+                    ui.end_row();
+
+                    let mut to_remove = None;
+
+                    for (i, wp) in self.watchpoints.iter_mut().enumerate() {
+                        ui.label(egui::RichText::new(format!("0x{:08X}", wp.address)).monospace());
+                        ui.label(format!("{} bytes", wp.size));
+                        
+                        let type_str = match (wp.on_read, wp.on_write) {
+                            (true, true) => "R/W",
+                            (true, false) => "Read",
+                            (false, true) => "Write",
+                            (false, false) => "None",
+                        };
+                        ui.label(type_str);
+                        
+                        ui.checkbox(&mut wp.enabled, "");
+                        ui.label(format!("{}", wp.hit_count));
+                        ui.text_edit_singleline(&mut wp.label);
+                        
+                        if ui.button("Remove").clicked() {
+                            to_remove = Some(i);
+                        }
+                        ui.end_row();
+                    }
+
+                    if let Some(idx) = to_remove {
+                        let wp = self.watchpoints.remove(idx);
+                        self.status_message = format!("Removed watchpoint at 0x{:08X}", wp.address);
+                    }
+                });
+
+            ui.add_space(10.0);
+
+            if ui.button("Clear All Watchpoints").clicked() {
+                self.watchpoints.clear();
+                self.status_message = String::from("Cleared all watchpoints");
+            }
+        }
+    }
+
+    fn show_memory_breakpoints(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Memory Breakpoints");
+        ui.add_space(10.0);
+
+        ui.label("Memory breakpoints pause execution on memory read/write operations.");
+        ui.add_space(5.0);
+
+        // Add memory breakpoint form
+        ui.horizontal(|ui| {
+            ui.label("Address:");
+            ui.add(egui::TextEdit::singleline(&mut self.mem_bp_address_input)
+                .desired_width(100.0)
+                .hint_text("0x00000000"));
+
+            ui.label("Type:");
+            egui::ComboBox::from_id_salt("mem_bp_type")
+                .selected_text(self.mem_bp_type.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.mem_bp_type, MemoryBreakpointType::Read, "Read");
+                    ui.selectable_value(&mut self.mem_bp_type, MemoryBreakpointType::Write, "Write");
+                    ui.selectable_value(&mut self.mem_bp_type, MemoryBreakpointType::Access, "Read/Write");
+                });
+
+            if ui.button("Add Memory Breakpoint").clicked() {
+                if let Ok(addr) = self.parse_address(&self.mem_bp_address_input) {
+                    let mem_bp = MemoryBreakpoint {
+                        id: self.next_mem_bp_id,
+                        address: addr as u64,
+                        bp_type: self.mem_bp_type,
+                        enabled: true,
+                        hit_count: 0,
+                        label: String::new(),
+                    };
+                    
+                    // Also add to the PPU debugger's breakpoint manager
+                    match self.mem_bp_type {
+                        MemoryBreakpointType::Read => {
+                            self.ppu_debugger.breakpoints.add_read_breakpoint(addr as u64);
+                        }
+                        MemoryBreakpointType::Write => {
+                            self.ppu_debugger.breakpoints.add_write_breakpoint(addr as u64);
+                        }
+                        MemoryBreakpointType::Access => {
+                            self.ppu_debugger.breakpoints.add_read_breakpoint(addr as u64);
+                            self.ppu_debugger.breakpoints.add_write_breakpoint(addr as u64);
+                        }
+                    }
+                    
+                    self.memory_breakpoints.push(mem_bp);
+                    self.next_mem_bp_id += 1;
+                    self.mem_bp_address_input.clear();
+                    self.status_message = format!("Added {} memory breakpoint at 0x{:08X}", 
+                        self.mem_bp_type.label(), addr);
+                } else {
+                    self.status_message = String::from("Invalid address format");
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Show summary
+        let read_count = self.memory_breakpoints.iter()
+            .filter(|bp| matches!(bp.bp_type, MemoryBreakpointType::Read))
+            .count();
+        let write_count = self.memory_breakpoints.iter()
+            .filter(|bp| matches!(bp.bp_type, MemoryBreakpointType::Write))
+            .count();
+        let access_count = self.memory_breakpoints.iter()
+            .filter(|bp| matches!(bp.bp_type, MemoryBreakpointType::Access))
+            .count();
+        
+        ui.label(format!("Total: {} (Read: {}, Write: {}, Access: {})", 
+            self.memory_breakpoints.len(), read_count, write_count, access_count));
+        ui.add_space(5.0);
+
+        if self.memory_breakpoints.is_empty() {
+            ui.label("No memory breakpoints set.");
+        } else {
+            egui::Grid::new("memory_bp_grid")
+                .striped(true)
+                .num_columns(6)
+                .show(ui, |ui| {
+                    ui.strong("Address");
+                    ui.strong("Type");
+                    ui.strong("Enabled");
+                    ui.strong("Hits");
+                    ui.strong("Label");
+                    ui.strong("Actions");
+                    ui.end_row();
+
+                    let mut to_remove = None;
+
+                    for (i, bp) in self.memory_breakpoints.iter_mut().enumerate() {
+                        ui.label(egui::RichText::new(format!("0x{:08X}", bp.address)).monospace());
+                        
+                        let type_color = match bp.bp_type {
+                            MemoryBreakpointType::Read => egui::Color32::LIGHT_BLUE,
+                            MemoryBreakpointType::Write => egui::Color32::LIGHT_RED,
+                            MemoryBreakpointType::Access => egui::Color32::LIGHT_GREEN,
+                        };
+                        ui.colored_label(type_color, bp.bp_type.label());
+                        
+                        ui.checkbox(&mut bp.enabled, "");
+                        ui.label(format!("{}", bp.hit_count));
+                        ui.text_edit_singleline(&mut bp.label);
+                        
+                        if ui.button("Remove").clicked() {
+                            to_remove = Some(i);
+                        }
+                        ui.end_row();
+                    }
+
+                    if let Some(idx) = to_remove {
+                        let bp = self.memory_breakpoints.remove(idx);
+                        self.status_message = format!("Removed memory breakpoint at 0x{:08X}", bp.address);
+                    }
+                });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("Clear All Memory Breakpoints").clicked() {
+                    self.memory_breakpoints.clear();
+                    self.ppu_debugger.breakpoints.clear();
+                    self.status_message = String::from("Cleared all memory breakpoints");
+                }
+
+                if ui.button("Disable All").clicked() {
+                    for bp in &mut self.memory_breakpoints {
+                        bp.enabled = false;
+                    }
+                    self.status_message = String::from("Disabled all memory breakpoints");
+                }
+
+                if ui.button("Enable All").clicked() {
+                    for bp in &mut self.memory_breakpoints {
+                        bp.enabled = true;
+                    }
+                    self.status_message = String::from("Enabled all memory breakpoints");
+                }
+            });
         }
     }
 }
