@@ -1,17 +1,19 @@
 [package]
-name = "oc-ui"
+name = "oc-debug"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "User interface for oxidized-cell PS3 emulator"
+description = "Debugging tools for oxidized-cell PS3 emulator"
 
 [dependencies]
 oc-core.workspace = true
-oc-debug.workspace = true
-eframe.workspace = true
-egui.workspace = true
+oc-memory.workspace = true
+oc-ppu.workspace = true
+oc-spu.workspace = true
+oc-rsx.workspace = true
 tracing.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]
 tracing-subscriber.workspace = true
