@@ -87,6 +87,9 @@ impl EventQueue {
         Ok(())
     }
 
+    /// Receive an event from the queue
+    /// Note: Timeout parameter is accepted for API compatibility but actual
+    /// blocking with timeout requires thread scheduler integration (not yet implemented)
     pub fn receive(&self, _timeout: Option<Duration>) -> Result<Event, KernelError> {
         let mut state = self.inner.lock();
 
@@ -98,6 +101,8 @@ impl EventQueue {
     }
 
     /// Receive with thread registration for waiting
+    /// Note: Timeout parameter is accepted for API compatibility but actual
+    /// blocking with timeout requires thread scheduler integration (not yet implemented)
     pub fn receive_with_wait(&self, thread_id: u64, _timeout: Option<Duration>) -> Result<Event, KernelError> {
         let mut state = self.inner.lock();
 

@@ -390,10 +390,11 @@ impl SpuChannels {
         let mut status = 0u32;
 
         // Bit 0: SPU_EVENT_DECR (decrementer event - timer reached zero)
+        // Note: SPU_EVENT_TM (tag mask) was previously planned for bit 0 but not implemented
         if self.decrementer_event_pending {
             status |= 0x01;
         }
-        // Bit 1: SPU_EVENT_MFC (MFC command completed)
+        // Bit 1: SPU_EVENT_MFC (MFC command completed) - not yet implemented
         // Bit 2: SPU_EVENT_SNR1 (signal notification 1)
         if self.signal1_pending {
             status |= 0x04;

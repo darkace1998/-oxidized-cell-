@@ -35,6 +35,8 @@ pub struct Cond {
     condvar: Condvar,
     /// Track waiting threads and signal count for spurious wakeup detection
     state: ParkingMutex<CondState>,
+    /// Attributes for future use (protocol flags, etc.)
+    /// Kept for API completeness and potential future enhancements
     #[allow(dead_code)]
     attributes: CondAttributes,
 }
@@ -55,8 +57,15 @@ impl Cond {
             id,
             condvar: Condvar::new(),
             state: ParkingMutex::new(CondState::default()),
+            // Attributes are stored for potential future use (e.g., protocol flags)
             attributes,
         }
+    }
+
+    /// Check if a signal was received since the initial counters
+    fn was_signaled(&self, initial_signal: u64, initial_broadcast: u64) -> bool {
+        let state = self.state.lock();
+        state.signal_count > initial_signal || state.broadcast_count > initial_broadcast
     }
 
     /// Wait on condition variable with optional timeout
@@ -94,13 +103,10 @@ impl Cond {
                 // Wait with timeout on our internal state
                 let mut guard = self.state.lock();
                 let wait_result = self.condvar.wait_for(&mut guard, remaining);
-
-                // Check if we were actually signaled
-                let was_signaled = guard.signal_count > initial_signal 
-                    || guard.broadcast_count > initial_broadcast;
                 drop(guard);
 
-                if was_signaled {
+                // Check if we were actually signaled
+                if self.was_signaled(initial_signal, initial_broadcast) {
                     break CondWaitResult::Signaled;
                 }
 
@@ -116,13 +122,10 @@ impl Cond {
             loop {
                 let mut guard = self.state.lock();
                 self.condvar.wait(&mut guard);
-
-                // Check if we were actually signaled
-                let was_signaled = guard.signal_count > initial_signal 
-                    || guard.broadcast_count > initial_broadcast;
                 drop(guard);
 
-                if was_signaled {
+                // Check if we were actually signaled
+                if self.was_signaled(initial_signal, initial_broadcast) {
                     break CondWaitResult::Signaled;
                 }
                 // Otherwise it was a spurious wakeup, continue waiting
