@@ -29,6 +29,7 @@ pub struct IsoDirectoryEntry {
 }
 
 /// ISO 9660 volume
+#[derive(Debug, Clone)]
 pub struct IsoVolume {
     /// Volume identifier
     pub volume_id: String,
