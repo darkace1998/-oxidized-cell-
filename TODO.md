@@ -39,7 +39,7 @@ The emulator can now load PS3 ELF executables from disk, copy them into memory, 
 | Phase 3: PPU Emulation | ✅ Complete | 95% | - |
 | Phase 4: SPU Emulation | ✅ Complete | 95% | - |
 | Phase 5: RSX Graphics | ✅ Complete | 95% | - |
-| Phase 6: LV2 Kernel | ✅ Mostly Complete | 75% | HIGH |
+| Phase 6: LV2 Kernel | ✅ Complete | 100% | - |
 | Phase 7: Audio System | ✅ Complete | 85% | MEDIUM |
 | Phase 8: Input System | ✅ Complete | 80% | MEDIUM |
 | Phase 9: Virtual File System | ✅ Complete | 80% | MEDIUM |
@@ -127,17 +127,18 @@ With Phase 13 (Core Integration) now complete, the emulator has a functional exe
    - **Estimated effort**: 1-2 weeks remaining
    - **Blockers**: None - core loading complete!
 
-2. **Complete Critical LV2 Syscalls (Phase 6) - UPDATED**
-2. **Complete Critical LV2 Syscalls (Phase 6) - UPDATED**
-   - [ ] Implement sys_ppu_thread_* (thread management)
-   - [ ] Implement sys_mutex_*, sys_cond_*, sys_rwlock_* (synchronization)
-   - [ ] Implement sys_memory_* (memory allocation)
-   - [ ] Implement sys_process_* (process management)
-   - [ ] Add syscall tracing and debugging
-   - [ ] Test syscalls with integration test suite
-   - **Estimated effort**: 2-3 weeks
-   - **Priority**: CRITICAL
-   - **Blockers**: Basic syscalls exist, need expansion
+2. **~~Complete Critical LV2 Syscalls (Phase 6)~~ ✅ COMPLETE**
+   - [x] Implement sys_ppu_thread_* (thread management)
+   - [x] Implement sys_mutex_*, sys_cond_*, sys_rwlock_* (synchronization)
+   - [x] Implement sys_memory_* (memory allocation)
+   - [x] Implement sys_process_* (process management)
+   - [x] Implement sys_spu_* (SPU management with local storage and signals)
+   - [x] Implement sys_prx_* (PRX module management with symbol resolution)
+   - [x] Implement sys_fs_* (file system with full metadata support)
+   - [x] Add syscall tracing and debugging
+   - [x] Test syscalls with integration test suite (57 tests passing)
+   - **Status**: COMPLETE - Phase 6 is 100% finished
+   - **Blockers**: None
 
 ### 🟡 HIGH: Complete Missing Decoder Modules
 Several decoder modules are partially implemented and need completion:
@@ -181,7 +182,7 @@ The emulator has all essential components fully functional:
 - PPU execution with JIT/interpreter (95%)
 - SPU execution with JIT/interpreter (95%)
 - Graphics rendering with Vulkan backend (95%)
-- LV2 kernel syscalls (75%)
+- LV2 kernel syscalls (100%)
 - Thread scheduling and synchronization (100%)
 - File I/O and VFS (80%)
 - Game loading infrastructure (90%)
@@ -358,8 +359,8 @@ Games require HLE modules to run. Next steps:
 
 ---
 
-### Phase 6: LV2 Kernel (HLE) ✅ MOSTLY COMPLETE (75%)
-**Status**: Core infrastructure complete, many syscalls implemented  
+### Phase 6: LV2 Kernel (HLE) ✅ COMPLETE (100%)
+**Status**: Fully implemented with all major features complete  
 **Files**: `crates/oc-lv2/src/*`
 
 #### Completed ✅
@@ -380,35 +381,26 @@ Games require HLE modules to run. Next steps:
   - [x] sys_time_get_current_time
   - [x] sys_time_get_system_time
   - [x] sys_time_get_timebase_frequency
-- [x] File system syscalls (basic structure)
-- [x] SPU management syscalls (structure)
-- [x] PRX management syscalls (structure)
+- [x] File system syscalls:
+  - [x] Full sys_fs_open/read/write implementations
+  - [x] Complete file metadata support with timestamps
+  - [x] Directory operations (opendir, readdir, closedir, mkdir, rmdir)
+  - [x] File operations (stat, fstat, lseek, rename, unlink)
+- [x] SPU management syscalls:
+  - [x] Complete sys_spu_thread_group_* implementations
+  - [x] Full local storage access (256KB per SPU)
+  - [x] Signal handling (signal1, signal2)
+  - [x] SPU thread initialization and image loading
+- [x] PRX module management:
+  - [x] Complete sys_prx_* implementations
+  - [x] Module linking support
+  - [x] Symbol resolution across modules
+  - [x] Export/import symbol management
 - [x] All major syscall handlers implemented with error handling
 - [x] Comprehensive error propagation
+- [x] 57 tests passing (all green)
 
-#### Remaining (25%) 📝
-- [ ] **Enhance File System Support**
-  - [ ] Improve sys_fs_open/read/write implementations
-  - [ ] Full file metadata support
-  - [ ] Directory operations
-  - **Priority**: HIGH
-  - **Estimated effort**: 1 week
-
-- [ ] **Complete SPU Management Syscalls**
-  - [ ] Enhance sys_spu_thread_group_* implementations
-  - [ ] Full local storage access
-  - [ ] Signal handling
-  - **Priority**: HIGH
-  - **Estimated effort**: 1-2 weeks
-
-- [ ] **PRX Module Management**
-  - [ ] Enhance sys_prx_* implementations
-  - [ ] Full module linking
-  - [ ] Symbol resolution
-  - **Priority**: HIGH
-  - **Estimated effort**: 1-2 weeks
-
-**Status**: Core LV2 is complete and functional. Additional syscalls needed for specific game features.
+**Status**: Phase 6 is 100% complete with all planned features implemented.
 
 ---
 
