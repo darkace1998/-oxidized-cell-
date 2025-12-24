@@ -24,7 +24,7 @@ The primary focus is on implementing HLE modules and completing the game loading
 | Input System | ✅ Complete | 80% | Medium |
 | VFS | ✅ Complete | 80% | Medium |
 | ELF/Game Loader | ✅ Complete | 90% | Medium |
-| HLE Modules | 🔨 Mostly Complete | 35% | **Critical** |
+| HLE Modules | 🔨 Mostly Complete | 40% | **Critical** |
 | User Interface | 🚧 In Progress | 15% | Medium |
 | Game Loading Pipeline | ❌ Not Started | 0% | **Critical** |
 
@@ -58,14 +58,14 @@ The HLE modules are essential for game execution. Most functions currently retur
 - [x] Handle system parameter strings (nickname, username, etc.) (string param storage)
 
 #### cellSpurs (SPU Runtime System)
-- [ ] Initialize SPURS instance properly
-- [ ] Create SPU thread group
-- [ ] Set up task queue
-- [ ] Finalize SPURS instance
-- [ ] Destroy SPU thread group on cleanup
-- [ ] Attach/detach LV2 event queues
-- [ ] Set workload priorities
-- [ ] Get SPU thread IDs
+- [x] Initialize SPURS instance properly (SpursManager with validation)
+- [x] Create SPU thread group (simulated SPU thread IDs)
+- [x] Set up task queue (workload management with HashMap)
+- [x] Finalize SPURS instance (cleanup implementation)
+- [x] Destroy SPU thread group on cleanup (resource cleanup)
+- [x] Attach/detach LV2 event queues (event queue port management)
+- [x] Set workload priorities (priority array per workload)
+- [x] Get SPU thread IDs (SPU thread ID retrieval)
 
 #### cellPad (Controller Input)
 - [x] Initialize with global pad manager (PadManager with init method)
