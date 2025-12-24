@@ -245,7 +245,13 @@ impl EmulatorRunner {
     }
 
     /// Create a PPU thread with a specific entry point and initial state
+    ///
+    /// Note: Thread ID is currently derived from the thread count, which could lead to
+    /// ID conflicts if threads are removed. A proper implementation would use a
+    /// monotonically increasing counter.
     fn create_ppu_thread_with_entry(&self, game: &LoadedGame) -> Result<u32> {
+        // TODO: Use a dedicated thread ID counter instead of thread count
+        // to ensure unique IDs even after thread removal
         let thread_id = {
             let threads = self.ppu_threads.read();
             threads.len() as u32

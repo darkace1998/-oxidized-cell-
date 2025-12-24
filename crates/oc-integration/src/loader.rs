@@ -6,6 +6,7 @@
 
 use oc_core::error::{EmulatorError, LoaderError};
 use oc_core::Result;
+use oc_loader::elf::{pt, sht};
 use oc_loader::{ElfLoader, SelfLoader};
 use oc_memory::MemoryManager;
 use std::fs::File;
@@ -22,6 +23,13 @@ const DEFAULT_BASE_ADDR: u32 = 0x1000_0000;
 
 /// PS3 default stack base address
 const STACK_BASE: u32 = 0xD000_0000;
+
+/// TOC (Table of Contents) offset from entry point in PPC64 ELF ABI
+/// This is the standard offset used when no explicit TOC section is found
+const TOC_OFFSET: u64 = 0x8000;
+
+/// ELF section flag: Allocatable
+const SHF_ALLOC: u64 = 0x2;
 
 /// Loaded game information
 #[derive(Debug, Clone)]
@@ -127,12 +135,15 @@ impl GameLoader {
         }
 
         // Calculate the actual entry point address
-        let entry_point = if elf_loader.entry_point < 0x1_0000_0000 {
-            // Entry point is already an absolute address
-            elf_loader.entry_point
-        } else {
-            // Entry point needs base address adjustment
+        // For ET_EXEC (executable), entry point is absolute. For ET_DYN (shared object), 
+        // entry point is relative and needs base address added.
+        // ELF e_type: 2 = ET_EXEC, 3 = ET_DYN
+        let entry_point = if elf_loader.header.e_type == 3 {
+            // ET_DYN: entry point is relative, add base address
             base_addr as u64 + elf_loader.entry_point
+        } else {
+            // ET_EXEC or other: entry point is absolute
+            elf_loader.entry_point
         };
 
         // Set up stack
@@ -163,8 +174,7 @@ impl GameLoader {
     fn calculate_base_addr(&self, elf: &ElfLoader) -> u32 {
         // Check if ELF has a preferred base address
         for phdr in &elf.phdrs {
-            if phdr.p_type == 1 {
-                // PT_LOAD
+            if phdr.p_type == pt::LOAD {
                 if phdr.p_vaddr > 0 && phdr.p_vaddr < 0x1_0000_0000 {
                     // Use the virtual address from the ELF
                     return 0; // No adjustment needed, use vaddr as-is
@@ -182,16 +192,15 @@ impl GameLoader {
         for shdr in &elf.shdrs {
             if shdr.sh_addr > 0 {
                 // TOC is often at .toc section address
-                // For now, use a simple heuristic
-                if shdr.sh_type == 1 && shdr.sh_flags & 0x2 != 0 {
-                    // SHT_PROGBITS, writable
+                // Look for a PROGBITS section that is allocated (has SHF_ALLOC flag)
+                if shdr.sh_type == sht::PROGBITS && (shdr.sh_flags & SHF_ALLOC) != 0 {
                     return base_addr as u64 + shdr.sh_addr;
                 }
             }
         }
 
-        // Fallback: TOC is typically entry_point + 0x8000 for PPC64
-        elf.entry_point.saturating_add(0x8000)
+        // Fallback: TOC is typically entry_point + TOC_OFFSET for PPC64 ABI
+        elf.entry_point.saturating_add(TOC_OFFSET)
     }
 
     /// Get memory manager reference
