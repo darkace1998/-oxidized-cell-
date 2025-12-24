@@ -423,6 +423,81 @@ pub mod syscalls {
     pub fn sys_fs_closedir(manager: &ObjectManager, dir_id: ObjectId) -> Result<(), KernelError> {
         manager.unregister(dir_id)
     }
+
+    /// sys_fs_mkdir
+    pub fn sys_fs_mkdir(
+        vfs: &VirtualFileSystem,
+        virtual_path: &str,
+        _mode: u32,
+    ) -> Result<(), KernelError> {
+        // Resolve virtual path to host path using VFS
+        let host_path = vfs
+            .resolve(virtual_path)
+            .unwrap_or_else(|| PathBuf::from(virtual_path));
+        
+        tracing::debug!(
+            "sys_fs_mkdir: virtual_path={}, host_path={:?}",
+            virtual_path,
+            host_path
+        );
+
+        std::fs::create_dir_all(host_path).map_err(|_| KernelError::PermissionDenied)
+    }
+
+    /// sys_fs_rmdir
+    pub fn sys_fs_rmdir(vfs: &VirtualFileSystem, virtual_path: &str) -> Result<(), KernelError> {
+        // Resolve virtual path to host path using VFS
+        let host_path = vfs
+            .resolve(virtual_path)
+            .unwrap_or_else(|| PathBuf::from(virtual_path));
+        
+        tracing::debug!(
+            "sys_fs_rmdir: virtual_path={}, host_path={:?}",
+            virtual_path,
+            host_path
+        );
+
+        std::fs::remove_dir(host_path).map_err(|_| KernelError::PermissionDenied)
+    }
+
+    /// sys_fs_unlink
+    pub fn sys_fs_unlink(vfs: &VirtualFileSystem, virtual_path: &str) -> Result<(), KernelError> {
+        // Resolve virtual path to host path using VFS
+        let host_path = vfs
+            .resolve(virtual_path)
+            .unwrap_or_else(|| PathBuf::from(virtual_path));
+        
+        tracing::debug!(
+            "sys_fs_unlink: virtual_path={}, host_path={:?}",
+            virtual_path,
+            host_path
+        );
+
+        std::fs::remove_file(host_path).map_err(|_| KernelError::PermissionDenied)
+    }
+
+    /// sys_fs_rename
+    pub fn sys_fs_rename(
+        vfs: &VirtualFileSystem,
+        old_virtual_path: &str,
+        new_virtual_path: &str,
+    ) -> Result<(), KernelError> {
+        // Resolve virtual paths to host paths using VFS
+        let old_host_path = vfs
+            .resolve(old_virtual_path)
+            .unwrap_or_else(|| PathBuf::from(old_virtual_path));
+        let new_host_path = vfs
+            .resolve(new_virtual_path)
+            .unwrap_or_else(|| PathBuf::from(new_virtual_path));
+        
+        tracing::debug!(
+            "sys_fs_rename: old={:?} -> new={:?}",
+            old_host_path,
+            new_host_path
+        );
+
+        std::fs::rename(old_host_path, new_host_path).map_err(|_| KernelError::PermissionDenied)
+    }
 }
 
 #[cfg(test)]
@@ -546,6 +621,60 @@ mod tests {
         // Test stat with virtual path
         let stat = syscalls::sys_fs_stat(&vfs, "/dev_hdd0/test_file.txt").unwrap();
         assert_eq!(stat.size, 13);
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_fs_directory_operations() {
+        let vfs = VirtualFileSystem::new();
+
+        // Create a temp directory for testing
+        let temp_dir = std::env::temp_dir().join("test_oc_lv2_dirops");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Mount /dev_hdd0 to temp directory
+        vfs.mount("/dev_hdd0", temp_dir.clone());
+
+        // Test mkdir
+        syscalls::sys_fs_mkdir(&vfs, "/dev_hdd0/test_new_dir", 0o755).unwrap();
+        assert!(temp_dir.join("test_new_dir").exists());
+
+        // Test rmdir
+        syscalls::sys_fs_rmdir(&vfs, "/dev_hdd0/test_new_dir").unwrap();
+        assert!(!temp_dir.join("test_new_dir").exists());
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_fs_file_operations() {
+        let vfs = VirtualFileSystem::new();
+
+        // Create a temp directory for testing
+        let temp_dir = std::env::temp_dir().join("test_oc_lv2_fileops");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Mount /dev_hdd0 to temp directory
+        vfs.mount("/dev_hdd0", temp_dir.clone());
+
+        // Create a test file
+        let test_file = temp_dir.join("test_file.txt");
+        {
+            let mut file = std::fs::File::create(&test_file).unwrap();
+            file.write_all(b"test content").unwrap();
+        }
+
+        // Test rename
+        syscalls::sys_fs_rename(&vfs, "/dev_hdd0/test_file.txt", "/dev_hdd0/renamed_file.txt").unwrap();
+        assert!(!temp_dir.join("test_file.txt").exists());
+        assert!(temp_dir.join("renamed_file.txt").exists());
+
+        // Test unlink
+        syscalls::sys_fs_unlink(&vfs, "/dev_hdd0/renamed_file.txt").unwrap();
+        assert!(!temp_dir.join("renamed_file.txt").exists());
 
         // Cleanup
         let _ = std::fs::remove_dir_all(temp_dir);

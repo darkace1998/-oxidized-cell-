@@ -4,4 +4,4 @@ pub mod devices;
 pub mod formats;
 pub mod mount;
 
-pub use mount::VirtualFileSystem;
+pub use mount::{devices as ps3_devices, VirtualFileSystem};

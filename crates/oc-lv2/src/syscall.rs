@@ -575,6 +575,36 @@ impl SyscallHandler {
                 Ok(0)
             }
 
+            SYS_FS_MKDIR => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_dir";
+                let mode = args[1] as u32;
+                fs::syscalls::sys_fs_mkdir(&self.vfs, path, mode)?;
+                Ok(0)
+            }
+
+            SYS_FS_RMDIR => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_dir";
+                fs::syscalls::sys_fs_rmdir(&self.vfs, path)?;
+                Ok(0)
+            }
+
+            SYS_FS_UNLINK => {
+                // In real impl, would read path from memory at args[0]
+                let path = "/dev_hdd0/test_file.txt";
+                fs::syscalls::sys_fs_unlink(&self.vfs, path)?;
+                Ok(0)
+            }
+
+            SYS_FS_RENAME => {
+                // In real impl, would read paths from memory
+                let old_path = "/dev_hdd0/old_file.txt";
+                let new_path = "/dev_hdd0/new_file.txt";
+                fs::syscalls::sys_fs_rename(&self.vfs, old_path, new_path)?;
+                Ok(0)
+            }
+
             // Time
             SYS_TIME_GET_SYSTEM_TIME | SYS_TIME_GET_CURRENT_TIME => {
                 let time = time_sc::sys_time_get_current_time();
