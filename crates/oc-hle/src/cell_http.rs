@@ -364,10 +364,7 @@ impl Default for HttpManager {
 pub fn cell_http_init(pool_size: u32) -> i32 {
     debug!("cellHttpInit(poolSize={})", pool_size);
 
-    // TODO: Use global manager instance
-    let mut manager = HttpManager::new();
-
-    match manager.init(pool_size) {
+    match crate::context::get_hle_context_mut().http.init(pool_size) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -380,11 +377,7 @@ pub fn cell_http_init(pool_size: u32) -> i32 {
 pub fn cell_http_end() -> i32 {
     debug!("cellHttpEnd()");
 
-    // TODO: Use global manager instance
-    let mut manager = HttpManager::new();
-    manager.is_initialized = true; // Simulate initialized state
-
-    match manager.end() {
+    match crate::context::get_hle_context_mut().http.end() {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -400,10 +393,13 @@ pub fn cell_http_end() -> i32 {
 pub fn cell_http_create_client(_client_addr: u32) -> i32 {
     debug!("cellHttpCreateClient()");
 
-    // TODO: Use global manager instance
-    // TODO: Write client handle to memory
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().http.create_client() {
+        Ok(_client_id) => {
+            // TODO: Write client handle to memory at _client_addr
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellHttpDestroyClient - Destroy HTTP client
@@ -413,12 +409,13 @@ pub fn cell_http_create_client(_client_addr: u32) -> i32 {
 ///
 /// # Returns
 /// * 0 on success
-pub fn cell_http_destroy_client(_client: u32) -> i32 {
-    debug!("cellHttpDestroyClient()");
+pub fn cell_http_destroy_client(client: u32) -> i32 {
+    debug!("cellHttpDestroyClient(client={})", client);
 
-    // TODO: Use global manager instance
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().http.destroy_client(client) {
+        Ok(_) => 0, // CELL_OK
+        Err(e) => e,
+    }
 }
 
 /// cellHttpCreateTransaction - Create HTTP transaction

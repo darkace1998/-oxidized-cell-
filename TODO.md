@@ -18,7 +18,7 @@ This document outlines the complete development roadmap for oxidized-cell, a Pla
 | Input System | ✅ Complete | 80% | Medium |
 | VFS | ✅ Complete | 80% | Medium |
 | ELF/Game Loader | ✅ Complete | 90% | Low |
-| HLE Modules | 🚧 In Progress | 15% | **HIGH** |
+| HLE Modules | 🚧 In Progress | 40% | **HIGH** |
 | User Interface | 🚧 In Progress | 15% | Medium |
 | Game Loading Pipeline | ❌ Not Started | 0% | **HIGH** |
 | Debugging Tools | 🔨 Mostly Complete | 70% | Low |
@@ -29,7 +29,14 @@ This document outlines the complete development roadmap for oxidized-cell, a Pla
 
 ### 1. HLE Module Implementation (Critical for Game Execution)
 
-The HLE (High-Level Emulation) modules are essential for running PS3 games. Currently at ~15% completion.
+The HLE (High-Level Emulation) modules are essential for running PS3 games. Currently at ~40% completion.
+
+#### HLE Infrastructure
+- [x] **Global HLE Context** - Centralized manager instances
+  - [x] Create HleContext to hold all manager instances
+  - [x] Implement thread-safe access via RwLock
+  - [x] Provide get_hle_context() and get_hle_context_mut() accessors
+  - [x] Add reset_hle_context() for testing/cleanup
 
 #### Graphics Modules
 - [ ] **cellGcmSys** - RSX Graphics Command Management (Skeleton exists)
@@ -45,8 +52,10 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [ ] Support upscaling/downscaling
 
 #### System Modules
-- [ ] **cellSysutil** - System Utilities (Skeleton exists)
-  - [ ] Implement system callbacks
+- [x] **cellSysutil** - System Utilities (Connected to global context)
+  - [x] Implement system callbacks
+  - [x] Implement check_callback through global manager
+  - [x] Get/set system parameters (int/string)
   - [ ] Add dialog support (game data, save data, etc.)
   - [ ] Implement PSID/account handling
   - [ ] Add disc detection functions
@@ -92,9 +101,11 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [ ] Add button state handling
 
 #### Audio Modules
-- [ ] **cellAudio** - Audio Output (Skeleton exists)
+- [x] **cellAudio** - Audio Output (Connected to global context)
+  - [x] Implement init/quit through global manager
+  - [x] Implement port open/close through global manager
+  - [x] Implement port start/stop through global manager
   - [ ] Connect to oc-audio backend
-  - [ ] Implement port management
   - [ ] Add mixing support
 
 - [ ] **cellMic** - Microphone Input
@@ -109,18 +120,27 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [ ] Support asynchronous I/O
 
 #### Media Decoding Modules
-- [ ] **cellVdec** - Video Decoder (Skeleton exists)
-  - [ ] Implement H.264/AVC decoding
+- [x] **cellVdec** - Video Decoder (Connected to global context)
+  - [x] Implement open/close through global manager
+  - [x] Implement start/end sequence through global manager
+  - [x] Implement decode_au through global manager
+  - [ ] Implement H.264/AVC decoding backend
   - [ ] Add MPEG-2 support
   - [ ] Support various profiles
 
-- [ ] **cellAdec** - Audio Decoder (Skeleton exists)
-  - [ ] Implement AAC decoding
+- [x] **cellAdec** - Audio Decoder (Connected to global context)
+  - [x] Implement open/close through global manager
+  - [x] Implement start/end sequence through global manager
+  - [x] Implement decode_au through global manager
+  - [ ] Implement AAC decoding backend
   - [ ] Add MP3 support
   - [ ] Support ATRAC3+
 
-- [ ] **cellDmux** - Demultiplexer (Skeleton exists)
-  - [ ] Implement container parsing
+- [x] **cellDmux** - Demultiplexer (Connected to global context)
+  - [x] Implement open/close through global manager
+  - [x] Implement set_stream/reset_stream through global manager
+  - [x] Implement enable_es/disable_es through global manager
+  - [ ] Implement container parsing backend
   - [ ] Add stream separation
 
 - [ ] **cellVpost** - Video Post-Processing (Skeleton exists)
@@ -141,16 +161,23 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [ ] Support animations
 
 #### Network Modules
-- [ ] **cellNetCtl** - Network Control (Skeleton exists)
-  - [ ] Implement network initialization
-  - [ ] Add connectivity checks
+- [x] **cellNetCtl** - Network Control (Connected to global context)
+  - [x] Implement init/term through global manager
+  - [x] Implement get_state through global manager
+  - [x] Implement add/remove handler through global manager
+  - [x] Implement start/unload dialog through global manager
+  - [ ] Connect to actual network backend
   - [ ] Support network configuration
 
-- [ ] **cellHttp** - HTTP Client (Skeleton exists)
+- [x] **cellHttp** - HTTP Client (Connected to global context)
+  - [x] Implement init/end through global manager
+  - [x] Implement create/destroy client through global manager
   - [ ] Implement HTTP requests
   - [ ] Add HTTPS support
 
-- [ ] **cellSsl** - SSL/TLS (Skeleton exists)
+- [x] **cellSsl** - SSL/TLS (Connected to global context)
+  - [x] Implement init/end through global manager
+  - [x] Implement certificate loader through global manager
   - [ ] Implement TLS connections
   - [ ] Add certificate handling
 

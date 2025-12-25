@@ -229,13 +229,7 @@ pub fn cell_sysutil_register_callback(slot: u32, func: u32, userdata: u32) -> i3
         slot, func, userdata
     );
 
-    if slot >= CELL_SYSUTIL_MAX_CALLBACK_SLOTS as u32 {
-        return 0x80010002u32 as i32; // CELL_SYSUTIL_ERROR_VALUE
-    }
-
-    // TODO: Store callback in global manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().sysutil.register_callback(slot, func, userdata)
 }
 
 /// cellSysutilUnregisterCallback - Unregister system callback
@@ -248,13 +242,7 @@ pub fn cell_sysutil_register_callback(slot: u32, func: u32, userdata: u32) -> i3
 pub fn cell_sysutil_unregister_callback(slot: u32) -> i32 {
     debug!("cellSysutilUnregisterCallback(slot={})", slot);
 
-    if slot >= CELL_SYSUTIL_MAX_CALLBACK_SLOTS as u32 {
-        return 0x80010002u32 as i32; // CELL_SYSUTIL_ERROR_VALUE
-    }
-
-    // TODO: Remove callback from global manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().sysutil.unregister_callback(slot)
 }
 
 /// cellSysutilCheckCallback - Check and process callbacks
@@ -266,10 +254,7 @@ pub fn cell_sysutil_unregister_callback(slot: u32) -> i32 {
 pub fn cell_sysutil_check_callback() -> i32 {
     trace!("cellSysutilCheckCallback()");
 
-    // TODO: Process pending system events through global manager
-    // TODO: Call registered callbacks if needed
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().sysutil.check_callback()
 }
 
 /// cellSysutilGetSystemParamInt - Get system parameter (integer)
@@ -283,10 +268,13 @@ pub fn cell_sysutil_check_callback() -> i32 {
 pub fn cell_sysutil_get_system_param_int(param_id: u32, _value_addr: u32) -> i32 {
     debug!("cellSysutilGetSystemParamInt(param_id=0x{:X})", param_id);
 
-    // TODO: Return appropriate system parameter from global manager
-    // TODO: Write value to memory
-
-    0 // CELL_OK
+    let ctx = crate::context::get_hle_context();
+    if let Some(_value) = ctx.sysutil.get_system_param_int(param_id) {
+        // TODO: Write value to memory at _value_addr
+        0 // CELL_OK
+    } else {
+        0x80010002u32 as i32 // CELL_SYSUTIL_ERROR_VALUE
+    }
 }
 
 /// cellSysutilGetSystemParamString - Get system parameter (string)
@@ -308,10 +296,13 @@ pub fn cell_sysutil_get_system_param_string(
         param_id, buf_size
     );
 
-    // TODO: Return appropriate system parameter string from global manager
-    // TODO: Write string to memory
-
-    0 // CELL_OK
+    let ctx = crate::context::get_hle_context();
+    if let Some(_value) = ctx.sysutil.get_system_param_string(param_id) {
+        // TODO: Write string to memory at _buf_addr
+        0 // CELL_OK
+    } else {
+        0x80010002u32 as i32 // CELL_SYSUTIL_ERROR_VALUE
+    }
 }
 
 #[cfg(test)]

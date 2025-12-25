@@ -301,10 +301,6 @@ pub fn cell_dmux_open(
 ) -> i32 {
     trace!("cellDmuxOpen called");
     
-    // TODO: Get global DmuxManager instance
-    // For now, create a temporary manager for demonstration
-    let mut manager = DmuxManager::new();
-    
     unsafe {
         if dmux_type.is_null() || resource.is_null() || cb.is_null() || handle.is_null() {
             return CELL_DMUX_ERROR_ARG;
@@ -314,7 +310,7 @@ pub fn cell_dmux_open(
         let resource_val = *resource;
         let cb_val = *cb;
 
-        match manager.open(dmux_type_val, resource_val, cb_val) {
+        match crate::context::get_hle_context_mut().dmux.open(dmux_type_val, resource_val, cb_val) {
             Ok(h) => {
                 *handle = h;
                 CELL_OK
@@ -328,10 +324,7 @@ pub fn cell_dmux_open(
 pub fn cell_dmux_close(handle: DmuxHandle) -> i32 {
     trace!("cellDmuxClose called with handle: {}", handle);
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.close(handle) {
+    match crate::context::get_hle_context_mut().dmux.close(handle) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }
@@ -346,10 +339,7 @@ pub fn cell_dmux_set_stream(
 ) -> i32 {
     trace!("cellDmuxSetStream called");
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.set_stream(handle, stream_addr, stream_size, discontinuity) {
+    match crate::context::get_hle_context_mut().dmux.set_stream(handle, stream_addr, stream_size, discontinuity) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }
@@ -359,10 +349,7 @@ pub fn cell_dmux_set_stream(
 pub fn cell_dmux_reset_stream(handle: DmuxHandle) -> i32 {
     trace!("cellDmuxResetStream called with handle: {}", handle);
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.reset_stream(handle) {
+    match crate::context::get_hle_context_mut().dmux.reset_stream(handle) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }
@@ -376,8 +363,7 @@ pub fn cell_dmux_query_attr(
 ) -> i32 {
     trace!("cellDmuxQueryAttr called");
     
-    // TODO: Get global DmuxManager instance
-    let manager = DmuxManager::new();
+    let ctx = crate::context::get_hle_context();
     
     unsafe {
         if dmux_type.is_null() || attr.is_null() {
@@ -385,7 +371,7 @@ pub fn cell_dmux_query_attr(
         }
 
         let dmux_type_val = *dmux_type;
-        match manager.query_attr(dmux_type_val) {
+        match ctx.dmux.query_attr(dmux_type_val) {
             Ok(result) => {
                 *attr = result;
                 CELL_OK
@@ -404,9 +390,6 @@ pub fn cell_dmux_enable_es(
 ) -> i32 {
     trace!("cellDmuxEnableEs called");
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
     unsafe {
         if es_attr.is_null() || es_cb.is_null() || es_handle.is_null() {
             return CELL_DMUX_ERROR_ARG;
@@ -415,7 +398,7 @@ pub fn cell_dmux_enable_es(
         let es_attr_val = *es_attr;
         let es_cb_val = *es_cb;
 
-        match manager.enable_es(handle, es_attr_val, es_cb_val) {
+        match crate::context::get_hle_context_mut().dmux.enable_es(handle, es_attr_val, es_cb_val) {
             Ok(h) => {
                 *es_handle = h;
                 CELL_OK
@@ -429,10 +412,7 @@ pub fn cell_dmux_enable_es(
 pub fn cell_dmux_disable_es(handle: DmuxHandle, es_handle: u32) -> i32 {
     trace!("cellDmuxDisableEs called with es_handle: {}", es_handle);
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.disable_es(handle, es_handle) {
+    match crate::context::get_hle_context_mut().dmux.disable_es(handle, es_handle) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }
@@ -442,10 +422,7 @@ pub fn cell_dmux_disable_es(handle: DmuxHandle, es_handle: u32) -> i32 {
 pub fn cell_dmux_reset_es(handle: DmuxHandle, es_handle: u32) -> i32 {
     trace!("cellDmuxResetEs called with es_handle: {}", es_handle);
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.reset_es(handle, es_handle) {
+    match crate::context::get_hle_context_mut().dmux.reset_es(handle, es_handle) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }
@@ -460,15 +437,12 @@ pub fn cell_dmux_get_au(
 ) -> i32 {
     trace!("cellDmuxGetAu called");
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
     unsafe {
         if au_info.is_null() {
             return CELL_DMUX_ERROR_ARG;
         }
 
-        match manager.get_au(handle, es_handle) {
+        match crate::context::get_hle_context_mut().dmux.get_au(handle, es_handle) {
             Ok(au) => {
                 *au_info = au;
                 CELL_OK
@@ -487,15 +461,12 @@ pub fn cell_dmux_peek_au(
 ) -> i32 {
     trace!("cellDmuxPeekAu called");
     
-    // TODO: Get global DmuxManager instance
-    let manager = DmuxManager::new();
-    
     unsafe {
         if au_info.is_null() {
             return CELL_DMUX_ERROR_ARG;
         }
 
-        match manager.peek_au(handle, es_handle) {
+        match crate::context::get_hle_context().dmux.peek_au(handle, es_handle) {
             Ok(au) => {
                 *au_info = au;
                 CELL_OK
@@ -509,10 +480,7 @@ pub fn cell_dmux_peek_au(
 pub fn cell_dmux_release_au(handle: DmuxHandle, es_handle: u32) -> i32 {
     trace!("cellDmuxReleaseAu called with es_handle: {}", es_handle);
     
-    // TODO: Get global DmuxManager instance
-    let mut manager = DmuxManager::new();
-    
-    match manager.release_au(handle, es_handle) {
+    match crate::context::get_hle_context_mut().dmux.release_au(handle, es_handle) {
         Ok(()) => CELL_OK,
         Err(e) => e,
     }

@@ -227,8 +227,8 @@ pub fn cell_adec_query_attr(
 /// cellAdecOpen - Open audio decoder
 pub fn cell_adec_open(
     adec_type: *const CellAdecType,
-    resource: *const CellAdecResource,
-    cb: *const CellAdecCb,
+    _resource: *const CellAdecResource,
+    _cb: *const CellAdecCb,
     handle: *mut AdecHandle,
 ) -> i32 {
     trace!("cellAdecOpen called");
@@ -238,11 +238,7 @@ pub fn cell_adec_open(
     }
     
     unsafe {
-        // TODO: Use global manager instance
-        // For now, create a temporary manager for demonstration
-        let mut manager = AdecManager::new();
-        
-        match manager.open((*adec_type).audio_codec_type) {
+        match crate::context::get_hle_context_mut().adec.open((*adec_type).audio_codec_type) {
             Ok(h) => {
                 *handle = h;
                 0 // CELL_OK
@@ -256,23 +252,17 @@ pub fn cell_adec_open(
 pub fn cell_adec_close(handle: AdecHandle) -> i32 {
     trace!("cellAdecClose called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = AdecManager::new();
-    
-    match manager.close(handle) {
+    match crate::context::get_hle_context_mut().adec.close(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
 }
 
 /// cellAdecStartSeq - Start sequence
-pub fn cell_adec_start_seq(handle: AdecHandle, param: u32) -> i32 {
+pub fn cell_adec_start_seq(handle: AdecHandle, _param: u32) -> i32 {
     trace!("cellAdecStartSeq called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = AdecManager::new();
-    
-    match manager.start_seq(handle) {
+    match crate::context::get_hle_context_mut().adec.start_seq(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -282,10 +272,7 @@ pub fn cell_adec_start_seq(handle: AdecHandle, param: u32) -> i32 {
 pub fn cell_adec_end_seq(handle: AdecHandle) -> i32 {
     trace!("cellAdecEndSeq called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = AdecManager::new();
-    
-    match manager.end_seq(handle) {
+    match crate::context::get_hle_context_mut().adec.end_seq(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -302,11 +289,8 @@ pub fn cell_adec_decode_au(
         return CELL_ADEC_ERROR_ARG;
     }
     
-    // TODO: Use global manager instance
-    let mut manager = AdecManager::new();
-    
     unsafe {
-        match manager.decode_au(handle, &*au_info) {
+        match crate::context::get_hle_context_mut().adec.decode_au(handle, &*au_info) {
             Ok(_) => 0, // CELL_OK
             Err(e) => e,
         }
@@ -324,10 +308,7 @@ pub fn cell_adec_get_pcm(
         return CELL_ADEC_ERROR_ARG;
     }
     
-    // TODO: Use global manager instance
-    let mut manager = AdecManager::new();
-    
-    match manager.get_pcm(handle) {
+    match crate::context::get_hle_context_mut().adec.get_pcm(handle) {
         Ok(pcm) => {
             unsafe {
                 *pcm_item = pcm;
@@ -340,7 +321,7 @@ pub fn cell_adec_get_pcm(
 
 /// cellAdecGetPcmItem - Get PCM item
 pub fn cell_adec_get_pcm_item(
-    handle: AdecHandle,
+    _handle: AdecHandle,
     pcm_item_addr: *mut u32,
 ) -> i32 {
     trace!("cellAdecGetPcmItem called");
@@ -349,7 +330,7 @@ pub fn cell_adec_get_pcm_item(
         return CELL_ADEC_ERROR_ARG;
     }
     
-    // TODO: Implement PCM item retrieval
+    // TODO: Implement PCM item retrieval through global context
     
     CELL_ADEC_ERROR_EMPTY
 }

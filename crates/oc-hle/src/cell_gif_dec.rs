@@ -192,6 +192,12 @@ impl GifDecManager {
     }
 }
 
+impl Default for GifDecManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// cellGifDecCreate - Create GIF decoder
 pub fn cell_gif_dec_create(
     main_handle: *mut CellGifDecMainHandle,
