@@ -315,10 +315,7 @@ impl Default for SslManager {
 pub fn cell_ssl_init(pool_size: u32) -> i32 {
     trace!("cellSslInit called with pool_size: {}", pool_size);
 
-    // TODO: Use global manager instance
-    let mut manager = SslManager::new();
-
-    match manager.init(pool_size) {
+    match crate::context::get_hle_context_mut().ssl.init(pool_size) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -328,11 +325,7 @@ pub fn cell_ssl_init(pool_size: u32) -> i32 {
 pub fn cell_ssl_end() -> i32 {
     trace!("cellSslEnd called");
 
-    // TODO: Use global manager instance
-    let mut manager = SslManager::new();
-    manager.is_initialized = true; // Simulate initialized state
-
-    match manager.end() {
+    match crate::context::get_hle_context_mut().ssl.end() {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -341,9 +334,9 @@ pub fn cell_ssl_end() -> i32 {
 /// cellSslCertificateLoader - Load certificate
 pub fn cell_ssl_certificate_loader(
     cert_id: *mut SslCertId,
-    cert_path: *const u8,
-    buffer: *mut u8,
-    size: u32,
+    _cert_path: *const u8,
+    _buffer: *mut u8,
+    _size: u32,
 ) -> i32 {
     trace!("cellSslCertificateLoader called");
 
@@ -351,11 +344,7 @@ pub fn cell_ssl_certificate_loader(
         return CELL_SSL_ERROR_INVALID_PARAM;
     }
 
-    // TODO: Use global manager instance
-    let mut manager = SslManager::new();
-    manager.is_initialized = true;
-
-    match manager.load_certificate(CellSslCertType::Pem) {
+    match crate::context::get_hle_context_mut().ssl.load_certificate(CellSslCertType::Pem) {
         Ok(id) => {
             unsafe {
                 *cert_id = id;
@@ -630,12 +619,18 @@ mod tests {
 
     #[test]
     fn test_ssl_lifecycle() {
+        // Reset HLE context first to ensure clean state
+        crate::context::reset_hle_context();
         assert_eq!(cell_ssl_init(0x10000), 0);
         assert_eq!(cell_ssl_end(), 0);
     }
 
     #[test]
     fn test_ssl_cert_loader() {
+        // Reset and initialize SSL first
+        crate::context::reset_hle_context();
+        assert_eq!(cell_ssl_init(0x10000), 0);
+        
         let mut cert_id = 0;
         let cert_path = b"test.pem\0";
         let mut buffer = vec![0u8; 1024];
@@ -649,6 +644,9 @@ mod tests {
 
         assert_eq!(result, 0);
         assert!(cert_id > 0);
+        
+        // Clean up
+        assert_eq!(cell_ssl_end(), 0);
     }
 
     #[test]

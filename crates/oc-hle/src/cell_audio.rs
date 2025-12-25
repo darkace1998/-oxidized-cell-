@@ -221,9 +221,7 @@ impl Default for AudioManager {
 pub fn cell_audio_init() -> i32 {
     debug!("cellAudioInit()");
 
-    // TODO: Initialize with global audio manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().audio.init()
 }
 
 /// cellAudioQuit - Quit audio system
@@ -233,9 +231,7 @@ pub fn cell_audio_init() -> i32 {
 pub fn cell_audio_quit() -> i32 {
     debug!("cellAudioQuit()");
 
-    // TODO: Quit global audio manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().audio.quit()
 }
 
 /// cellAudioPortOpen - Open audio port
@@ -249,11 +245,21 @@ pub fn cell_audio_quit() -> i32 {
 pub fn cell_audio_port_open(_param_addr: u32, _port_num_addr: u32) -> i32 {
     debug!("cellAudioPortOpen()");
 
-    // TODO: Read parameters from memory
-    // TODO: Open port through global audio manager
-    // TODO: Write port number to memory
-
-    0 // CELL_OK
+    // Default audio port parameters when memory read is not yet implemented
+    const DEFAULT_CHANNELS: u32 = 2;      // Stereo
+    const DEFAULT_BLOCK_COUNT: u32 = CELL_AUDIO_BLOCK_8;
+    const DEFAULT_ATTR: u32 = 0;          // No special attributes
+    const DEFAULT_LEVEL: f32 = 1.0;       // Full volume
+    
+    // TODO: Read actual parameters from memory at _param_addr
+    let mut ctx = crate::context::get_hle_context_mut();
+    match ctx.audio.port_open(DEFAULT_CHANNELS, DEFAULT_BLOCK_COUNT, DEFAULT_ATTR, DEFAULT_LEVEL) {
+        Ok(_port_num) => {
+            // TODO: Write port number to memory at _port_num_addr
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellAudioPortClose - Close audio port
@@ -266,9 +272,7 @@ pub fn cell_audio_port_open(_param_addr: u32, _port_num_addr: u32) -> i32 {
 pub fn cell_audio_port_close(port_num: u32) -> i32 {
     debug!("cellAudioPortClose(port_num={})", port_num);
 
-    // TODO: Close port through global audio manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().audio.port_close(port_num)
 }
 
 /// cellAudioPortStart - Start audio port
@@ -281,9 +285,7 @@ pub fn cell_audio_port_close(port_num: u32) -> i32 {
 pub fn cell_audio_port_start(port_num: u32) -> i32 {
     trace!("cellAudioPortStart(port_num={})", port_num);
 
-    // TODO: Start port through global audio manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().audio.port_start(port_num)
 }
 
 /// cellAudioPortStop - Stop audio port
@@ -296,9 +298,7 @@ pub fn cell_audio_port_start(port_num: u32) -> i32 {
 pub fn cell_audio_port_stop(port_num: u32) -> i32 {
     trace!("cellAudioPortStop(port_num={})", port_num);
 
-    // TODO: Stop port through global audio manager
-
-    0 // CELL_OK
+    crate::context::get_hle_context_mut().audio.port_stop(port_num)
 }
 
 /// cellAudioGetPortConfig - Get port configuration
@@ -312,10 +312,13 @@ pub fn cell_audio_port_stop(port_num: u32) -> i32 {
 pub fn cell_audio_get_port_config(port_num: u32, _config_addr: u32) -> i32 {
     trace!("cellAudioGetPortConfig(port_num={})", port_num);
 
-    // TODO: Get port configuration from global audio manager
-    // TODO: Write configuration to memory
-
-    0 // CELL_OK
+    // TODO: Write configuration to memory at _config_addr
+    // For now just return success if the audio is initialized
+    if crate::context::get_hle_context().audio.initialized {
+        0 // CELL_OK
+    } else {
+        0x80310702u32 as i32 // CELL_AUDIO_ERROR_AUDIOSYSTEM
+    }
 }
 
 /// cellAudioCreateNotifyEventQueue - Create event queue for audio notifications
@@ -329,7 +332,8 @@ pub fn cell_audio_get_port_config(port_num: u32, _config_addr: u32) -> i32 {
 pub fn cell_audio_create_notify_event_queue(_id_addr: u32, key: u64) -> i32 {
     debug!("cellAudioCreateNotifyEventQueue(key=0x{:016X})", key);
 
-    // TODO: Create event queue for audio notifications
+    // TODO: Create event queue for audio notifications through kernel
+    // TODO: Write event queue ID to memory at _id_addr
 
     0 // CELL_OK
 }
@@ -344,7 +348,7 @@ pub fn cell_audio_create_notify_event_queue(_id_addr: u32, key: u64) -> i32 {
 pub fn cell_audio_set_notify_event_queue(key: u64) -> i32 {
     debug!("cellAudioSetNotifyEventQueue(key=0x{:016X})", key);
 
-    // TODO: Set notification event queue
+    // TODO: Set notification event queue for audio manager
 
     0 // CELL_OK
 }
@@ -359,7 +363,7 @@ pub fn cell_audio_set_notify_event_queue(key: u64) -> i32 {
 pub fn cell_audio_remove_notify_event_queue(key: u64) -> i32 {
     debug!("cellAudioRemoveNotifyEventQueue(key=0x{:016X})", key);
 
-    // TODO: Remove notification event queue
+    // TODO: Remove notification event queue from audio manager
 
     0 // CELL_OK
 }

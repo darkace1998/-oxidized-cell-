@@ -10,5 +10,6 @@ description = "HLE modules for oxidized-cell PS3 emulator"
 oc-core.workspace = true
 oc-memory.workspace = true
 tracing.workspace = true
+once_cell.workspace = true
 
 [dev-dependencies]

@@ -3,6 +3,7 @@
 //! This crate provides HLE implementations of PS3 system libraries.
 
 pub mod module;
+pub mod context;
 
 // Graphics Modules
 pub mod cell_gcm_sys;
@@ -37,3 +38,4 @@ pub mod cell_fs;
 pub mod cell_pad;
 
 pub use module::ModuleRegistry;
+pub use context::{HleContext, HLE_CONTEXT, get_hle_context, get_hle_context_mut, reset_hle_context};

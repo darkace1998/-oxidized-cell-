@@ -238,8 +238,8 @@ pub fn cell_vdec_query_attr(
 /// cellVdecOpen - Open video decoder
 pub fn cell_vdec_open(
     vdec_type: *const CellVdecType,
-    resource: *const CellVdecResource,
-    cb: *const CellVdecCb,
+    _resource: *const CellVdecResource,
+    _cb: *const CellVdecCb,
     handle: *mut VdecHandle,
 ) -> i32 {
     trace!("cellVdecOpen called");
@@ -249,11 +249,7 @@ pub fn cell_vdec_open(
     }
     
     unsafe {
-        // TODO: Use global manager instance
-        // For now, create a temporary manager for demonstration
-        let mut manager = VdecManager::new();
-        
-        match manager.open((*vdec_type).codec_type, (*vdec_type).profile_level) {
+        match crate::context::get_hle_context_mut().vdec.open((*vdec_type).codec_type, (*vdec_type).profile_level) {
             Ok(h) => {
                 *handle = h;
                 0 // CELL_OK
@@ -267,10 +263,7 @@ pub fn cell_vdec_open(
 pub fn cell_vdec_close(handle: VdecHandle) -> i32 {
     trace!("cellVdecClose called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
-    match manager.close(handle) {
+    match crate::context::get_hle_context_mut().vdec.close(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -280,10 +273,7 @@ pub fn cell_vdec_close(handle: VdecHandle) -> i32 {
 pub fn cell_vdec_start_seq(handle: VdecHandle) -> i32 {
     trace!("cellVdecStartSeq called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
-    match manager.start_seq(handle) {
+    match crate::context::get_hle_context_mut().vdec.start_seq(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -293,10 +283,7 @@ pub fn cell_vdec_start_seq(handle: VdecHandle) -> i32 {
 pub fn cell_vdec_end_seq(handle: VdecHandle) -> i32 {
     trace!("cellVdecEndSeq called with handle: {}", handle);
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
-    match manager.end_seq(handle) {
+    match crate::context::get_hle_context_mut().vdec.end_seq(handle) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -305,7 +292,7 @@ pub fn cell_vdec_end_seq(handle: VdecHandle) -> i32 {
 /// cellVdecDecodeAu - Decode access unit
 pub fn cell_vdec_decode_au(
     handle: VdecHandle,
-    mode: u32,
+    _mode: u32,
     au_info: *const CellVdecAuInfo,
 ) -> i32 {
     trace!("cellVdecDecodeAu called");
@@ -314,11 +301,8 @@ pub fn cell_vdec_decode_au(
         return CELL_VDEC_ERROR_ARG;
     }
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
     unsafe {
-        match manager.decode_au(handle, &*au_info) {
+        match crate::context::get_hle_context_mut().vdec.decode_au(handle, &*au_info) {
             Ok(_) => 0, // CELL_OK
             Err(e) => e,
         }
@@ -337,11 +321,8 @@ pub fn cell_vdec_get_picture(
         return CELL_VDEC_ERROR_ARG;
     }
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
     unsafe {
-        match manager.get_picture(handle, &*pic_format) {
+        match crate::context::get_hle_context_mut().vdec.get_picture(handle, &*pic_format) {
             Ok(pic) => {
                 *pic_item = pic;
                 0 // CELL_OK
@@ -353,7 +334,7 @@ pub fn cell_vdec_get_picture(
 
 /// cellVdecGetPicItem - Get picture item
 pub fn cell_vdec_get_pic_item(
-    handle: VdecHandle,
+    _handle: VdecHandle,
     pic_item_addr: *mut u32,
 ) -> i32 {
     trace!("cellVdecGetPicItem called");
@@ -362,7 +343,7 @@ pub fn cell_vdec_get_pic_item(
         return CELL_VDEC_ERROR_ARG;
     }
     
-    // TODO: Implement picture item retrieval
+    // TODO: Implement picture item retrieval through global context
     
     CELL_VDEC_ERROR_EMPTY
 }
@@ -371,10 +352,7 @@ pub fn cell_vdec_get_pic_item(
 pub fn cell_vdec_set_frame_rate(handle: VdecHandle, frame_rate: u32) -> i32 {
     trace!("cellVdecSetFrameRate called with frame_rate: {}", frame_rate);
     
-    // TODO: Use global manager instance
-    let mut manager = VdecManager::new();
-    
-    match manager.set_frame_rate(handle, frame_rate) {
+    match crate::context::get_hle_context_mut().vdec.set_frame_rate(handle, frame_rate) {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }

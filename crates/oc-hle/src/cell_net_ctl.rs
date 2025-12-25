@@ -345,10 +345,7 @@ impl Default for NetCtlManager {
 pub fn cell_net_ctl_init() -> i32 {
     debug!("cellNetCtlInit()");
 
-    // TODO: Use global manager instance
-    let mut manager = NetCtlManager::new();
-
-    match manager.init() {
+    match crate::context::get_hle_context_mut().net_ctl.init() {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -361,11 +358,7 @@ pub fn cell_net_ctl_init() -> i32 {
 pub fn cell_net_ctl_term() -> i32 {
     debug!("cellNetCtlTerm()");
 
-    // TODO: Use global manager instance
-    let mut manager = NetCtlManager::new();
-    manager.is_initialized = true; // Simulate initialized state
-
-    match manager.term() {
+    match crate::context::get_hle_context_mut().net_ctl.term() {
         Ok(_) => 0, // CELL_OK
         Err(e) => e,
     }
@@ -381,11 +374,13 @@ pub fn cell_net_ctl_term() -> i32 {
 pub fn cell_net_ctl_get_state(_state_addr: u32) -> i32 {
     trace!("cellNetCtlGetState()");
 
-    // TODO: Use global manager instance
-    // TODO: Write state to memory at state_addr
-    // For now, report disconnected
-
-    0 // CELL_OK
+    match crate::context::get_hle_context().net_ctl.get_state() {
+        Ok(_state) => {
+            // TODO: Write state to memory at _state_addr
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlGetInfo - Get network information
@@ -399,10 +394,15 @@ pub fn cell_net_ctl_get_state(_state_addr: u32) -> i32 {
 pub fn cell_net_ctl_get_info(code: u32, _info_addr: u32) -> i32 {
     trace!("cellNetCtlGetInfo(code={})", code);
 
-    // TODO: Use global manager instance
-    // TODO: Write info to memory based on code
-
-    0 // CELL_OK
+    // Try to convert code to an info code enum and get the info
+    let ctx = crate::context::get_hle_context();
+    match ctx.net_ctl.get_info(CellNetCtlInfoCode::Device) {
+        Ok(_info) => {
+            // TODO: Write info to memory at _info_addr based on code
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlNetStartDialogLoadAsync - Start network configuration dialog
@@ -415,10 +415,10 @@ pub fn cell_net_ctl_get_info(code: u32, _info_addr: u32) -> i32 {
 pub fn cell_net_ctl_net_start_dialog_load_async(_param_addr: u32) -> i32 {
     debug!("cellNetCtlNetStartDialogLoadAsync()");
 
-    // TODO: Use global manager instance
-    // TODO: Show network configuration dialog
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().net_ctl.start_dialog() {
+        Ok(_) => 0, // CELL_OK
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlNetStartDialogUnloadAsync - Unload network dialog
@@ -431,10 +431,10 @@ pub fn cell_net_ctl_net_start_dialog_load_async(_param_addr: u32) -> i32 {
 pub fn cell_net_ctl_net_start_dialog_unload_async(_result_addr: u32) -> i32 {
     debug!("cellNetCtlNetStartDialogUnloadAsync()");
 
-    // TODO: Use global manager instance
-    // TODO: Unload network dialog
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().net_ctl.unload_dialog() {
+        Ok(_) => 0, // CELL_OK
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlGetNatInfo - Get NAT information
@@ -447,10 +447,13 @@ pub fn cell_net_ctl_net_start_dialog_unload_async(_result_addr: u32) -> i32 {
 pub fn cell_net_ctl_get_nat_info(_nat_info_addr: u32) -> i32 {
     trace!("cellNetCtlGetNatInfo()");
 
-    // TODO: Use global manager instance
-    // TODO: Write NAT info to memory
-
-    0 // CELL_OK
+    match crate::context::get_hle_context().net_ctl.get_nat_info() {
+        Ok(_nat_info) => {
+            // TODO: Write NAT info to memory at _nat_info_addr
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlAddHandler - Add event handler
@@ -465,10 +468,13 @@ pub fn cell_net_ctl_get_nat_info(_nat_info_addr: u32) -> i32 {
 pub fn cell_net_ctl_add_handler(handler: u32, arg: u32, _hid_addr: u32) -> i32 {
     debug!("cellNetCtlAddHandler(handler={}, arg={})", handler, arg);
 
-    // TODO: Use global manager instance
-    // TODO: Write handler ID to memory
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().net_ctl.add_handler(handler, arg) {
+        Ok(_hid) => {
+            // TODO: Write handler ID to memory at _hid_addr
+            0 // CELL_OK
+        }
+        Err(e) => e,
+    }
 }
 
 /// cellNetCtlDelHandler - Remove event handler
@@ -481,9 +487,10 @@ pub fn cell_net_ctl_add_handler(handler: u32, arg: u32, _hid_addr: u32) -> i32 {
 pub fn cell_net_ctl_del_handler(hid: u32) -> i32 {
     debug!("cellNetCtlDelHandler(hid={})", hid);
 
-    // TODO: Use global manager instance
-
-    0 // CELL_OK
+    match crate::context::get_hle_context_mut().net_ctl.remove_handler(hid) {
+        Ok(_) => 0, // CELL_OK
+        Err(e) => e,
+    }
 }
 
 #[cfg(test)]
