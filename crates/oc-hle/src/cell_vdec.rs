@@ -611,7 +611,8 @@ mod tests {
     #[test]
     fn test_vdec_decode_au() {
         let mut manager = VdecManager::new();
-        let handle = manager.open(CellVdecCodecType::Avc as u32, 0x42).unwrap();
+        // Profile 0x42 (66 = Baseline) should be in upper 16 bits: 0x00420000
+        let handle = manager.open(CellVdecCodecType::Avc as u32, 0x00420000).unwrap();
         manager.start_seq(handle).unwrap();
         
         let au_info = CellVdecAuInfo {

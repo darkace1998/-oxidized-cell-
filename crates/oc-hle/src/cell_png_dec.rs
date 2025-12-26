@@ -103,6 +103,185 @@ pub const CELL_PNGDEC_ERROR_SEQ: i32 = -3;
 pub const CELL_PNGDEC_ERROR_BUSY: i32 = -4;
 pub const CELL_PNGDEC_ERROR_EMPTY: i32 = -5;
 
+/// PNG color type
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PngColorType {
+    /// Grayscale
+    Grayscale = 0,
+    /// RGB
+    Rgb = 2,
+    /// Palette/Indexed
+    Palette = 3,
+    /// Grayscale + Alpha
+    GrayscaleAlpha = 4,
+    /// RGBA
+    Rgba = 6,
+}
+
+/// PNG decoder backend
+#[derive(Debug, Clone)]
+struct PngDecoder {
+    /// Image width
+    width: u32,
+    /// Image height
+    height: u32,
+    /// Bit depth (1, 2, 4, 8, 16)
+    bit_depth: u8,
+    /// Color type
+    color_type: PngColorType,
+    /// Interlace method (0=none, 1=Adam7)
+    interlace: u8,
+}
+
+impl PngDecoder {
+    /// Create a new PNG decoder
+    fn new() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            bit_depth: 8,
+            color_type: PngColorType::Rgba,
+            interlace: 0,
+        }
+    }
+
+    /// Parse PNG header (simplified implementation)
+    fn parse_header(&mut self, data: &[u8]) -> Result<(), i32> {
+        // PNG signature: 137 80 78 71 13 10 26 10
+        const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+        
+        if data.len() < 8 {
+            return Err(CELL_PNGDEC_ERROR_ARG);
+        }
+        
+        if &data[0..8] != &PNG_SIGNATURE {
+            trace!("PngDecoder::parse_header: invalid PNG signature");
+            // For HLE, we'll be lenient and use placeholder values
+        }
+        
+        // In a real implementation, we would:
+        // 1. Find IHDR chunk
+        // 2. Parse width (4 bytes)
+        // 3. Parse height (4 bytes)
+        // 4. Parse bit depth (1 byte)
+        // 5. Parse color type (1 byte)
+        // 6. Parse compression method (1 byte)
+        // 7. Parse filter method (1 byte)
+        // 8. Parse interlace method (1 byte)
+        
+        // Use placeholder values
+        self.width = 1920;
+        self.height = 1080;
+        self.bit_depth = 8;
+        self.color_type = PngColorType::Rgba;
+        self.interlace = 0;
+        
+        trace!("PngDecoder::parse_header: {}x{}, bit_depth={}, color_type={:?}", 
+               self.width, self.height, self.bit_depth, self.color_type);
+        
+        Ok(())
+    }
+
+    /// Decode PNG data to RGBA format
+    fn decode(&self, src_data: &[u8], dst_buffer: &mut [u8], out_width: u32, out_height: u32) -> Result<(), i32> {
+        trace!("PngDecoder::decode: {}x{} -> {}x{}", self.width, self.height, out_width, out_height);
+        
+        let pixel_count = (out_width * out_height) as usize;
+        let required_size = pixel_count * 4;
+        
+        if dst_buffer.len() < required_size {
+            return Err(CELL_PNGDEC_ERROR_ARG);
+        }
+        
+        // In a real implementation, we would:
+        // 1. Decompress IDAT chunks using zlib/inflate
+        // 2. Unfilter each scanline (PNG filter types 0-4)
+        // 3. Deinterlace if interlace method is Adam7
+        // 4. Convert to requested output format based on color type
+        
+        // For HLE, simulate decoding by filling with test pattern
+        for i in 0..pixel_count {
+            let x = (i as u32 % out_width) as u8;
+            let y = (i as u32 / out_width) as u8;
+            
+            dst_buffer[i * 4] = x.wrapping_mul(255) / 255;     // R
+            dst_buffer[i * 4 + 1] = y.wrapping_mul(255) / 255; // G
+            dst_buffer[i * 4 + 2] = 128;                       // B
+            dst_buffer[i * 4 + 3] = 255;                       // A
+        }
+        
+        Ok(())
+    }
+
+    /// Convert from indexed/palette color to RGBA
+    fn convert_palette_to_rgba(&self, palette: &[u8], indices: &[u8], output: &mut [u8]) -> Result<(), i32> {
+        trace!("PngDecoder::convert_palette_to_rgba: {} indices", indices.len());
+        
+        if palette.len() < 3 {
+            return Err(CELL_PNGDEC_ERROR_ARG);
+        }
+        
+        for (i, &index) in indices.iter().enumerate() {
+            let palette_idx = (index as usize) * 3;
+            if palette_idx + 2 < palette.len() && i * 4 + 3 < output.len() {
+                output[i * 4] = palette[palette_idx];         // R
+                output[i * 4 + 1] = palette[palette_idx + 1]; // G
+                output[i * 4 + 2] = palette[palette_idx + 2]; // B
+                output[i * 4 + 3] = 255;                      // A
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Convert grayscale to RGBA
+    fn convert_grayscale_to_rgba(&self, grayscale: &[u8], output: &mut [u8]) -> Result<(), i32> {
+        trace!("PngDecoder::convert_grayscale_to_rgba: {} pixels", grayscale.len());
+        
+        for (i, &gray) in grayscale.iter().enumerate() {
+            if i * 4 + 3 < output.len() {
+                output[i * 4] = gray;     // R
+                output[i * 4 + 1] = gray; // G
+                output[i * 4 + 2] = gray; // B
+                output[i * 4 + 3] = 255;  // A
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Convert grayscale+alpha to RGBA
+    fn convert_grayscale_alpha_to_rgba(&self, ga_data: &[u8], output: &mut [u8]) -> Result<(), i32> {
+        trace!("PngDecoder::convert_grayscale_alpha_to_rgba: {} bytes", ga_data.len());
+        
+        for i in 0..(ga_data.len() / 2) {
+            if i * 4 + 3 < output.len() && i * 2 + 1 < ga_data.len() {
+                let gray = ga_data[i * 2];
+                let alpha = ga_data[i * 2 + 1];
+                
+                output[i * 4] = gray;     // R
+                output[i * 4 + 1] = gray; // G
+                output[i * 4 + 2] = gray; // B
+                output[i * 4 + 3] = alpha; // A
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Get number of components for color type
+    fn get_components(&self) -> u32 {
+        match self.color_type {
+            PngColorType::Grayscale => 1,
+            PngColorType::Rgb => 3,
+            PngColorType::Palette => 1, // Indices
+            PngColorType::GrayscaleAlpha => 2,
+            PngColorType::Rgba => 4,
+        }
+    }
+}
+
 /// PNG decoder entry
 #[derive(Debug, Clone)]
 struct PngDecEntry {
@@ -127,6 +306,8 @@ struct PngSubDecEntry {
     in_param: Option<CellPngDecInParam>,
     /// Output parameters
     out_param: Option<CellPngDecOutParam>,
+    /// Decoder backend
+    decoder: PngDecoder,
 }
 
 /// PNG decoder manager
@@ -194,6 +375,7 @@ impl PngDecManager {
                 info: None,
                 in_param: None,
                 out_param: None,
+                decoder: PngDecoder::new(),
             };
 
             entry.sub_handles.insert(sub_id, sub_entry);
@@ -279,6 +461,43 @@ impl PngDecManager {
             entry.sub_handles.len()
         } else {
             0
+        }
+    }
+
+    /// Decode PNG data
+    pub fn decode_data(&mut self, main_handle: u32, sub_handle: u32, src_data: &[u8], dst_buffer: &mut [u8]) -> Result<(), i32> {
+        if let Some(entry) = self.decoders.get_mut(&main_handle) {
+            if let Some(sub_entry) = entry.sub_handles.get_mut(&sub_handle) {
+                // Parse header if not already done
+                if sub_entry.info.is_none() {
+                    sub_entry.decoder.parse_header(src_data)?;
+                    
+                    // Update info
+                    let info = CellPngDecInfo {
+                        image_width: sub_entry.decoder.width,
+                        image_height: sub_entry.decoder.height,
+                        num_components: sub_entry.decoder.get_components(),
+                        color_space: sub_entry.decoder.color_type as u32,
+                        bit_depth: sub_entry.decoder.bit_depth as u32,
+                        interlace_method: sub_entry.decoder.interlace as u32,
+                        chunk_information: 0,
+                    };
+                    sub_entry.info = Some(info);
+                }
+                
+                // Decode to output buffer
+                let out_width = sub_entry.info.as_ref().map(|i| i.image_width).unwrap_or(1920);
+                let out_height = sub_entry.info.as_ref().map(|i| i.image_height).unwrap_or(1080);
+                
+                sub_entry.decoder.decode(src_data, dst_buffer, out_width, out_height)?;
+                
+                trace!("PngDecManager::decode_data: main_id={}, sub_id={}", main_handle, sub_handle);
+                Ok(())
+            } else {
+                Err(CELL_PNGDEC_ERROR_ARG)
+            }
+        } else {
+            Err(CELL_PNGDEC_ERROR_ARG)
         }
     }
 }

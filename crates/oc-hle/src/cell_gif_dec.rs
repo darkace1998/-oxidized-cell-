@@ -70,6 +70,232 @@ pub struct CellGifDecOutParam {
     pub color_space: u32,
 }
 
+/// GIF disposal method
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GifDisposalMethod {
+    /// No disposal specified
+    None = 0,
+    /// Do not dispose (keep frame)
+    DoNotDispose = 1,
+    /// Restore to background
+    RestoreBackground = 2,
+    /// Restore to previous
+    RestorePrevious = 3,
+}
+
+/// GIF frame information
+#[derive(Debug, Clone)]
+struct GifFrame {
+    /// Frame delay in centiseconds (1/100s)
+    delay: u16,
+    /// X offset
+    x_offset: u16,
+    /// Y offset
+    y_offset: u16,
+    /// Frame width
+    width: u16,
+    /// Frame height
+    height: u16,
+    /// Disposal method
+    disposal_method: GifDisposalMethod,
+    /// Frame data (indices into palette)
+    data: Vec<u8>,
+}
+
+/// GIF decoder backend with animation support
+#[derive(Debug, Clone)]
+struct GifDecoder {
+    /// Global width
+    width: u32,
+    /// Global height
+    height: u32,
+    /// Global color table
+    global_palette: Vec<u8>,
+    /// Background color index
+    background_color: u8,
+    /// Frames (for animated GIFs)
+    frames: Vec<GifFrame>,
+    /// Current frame index
+    current_frame: usize,
+    /// Loop count (0 = infinite)
+    loop_count: u16,
+}
+
+impl GifDecoder {
+    fn new() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            global_palette: Vec::new(),
+            background_color: 0,
+            frames: Vec::new(),
+            current_frame: 0,
+            loop_count: 0,
+        }
+    }
+
+    /// Parse GIF header
+    fn parse_header(&mut self, data: &[u8]) -> Result<(), i32> {
+        // GIF signature: "GIF87a" or "GIF89a"
+        if data.len() < 6 {
+            return Err(CELL_GIFDEC_ERROR_ARG);
+        }
+
+        let signature = &data[0..3];
+        if signature != b"GIF" {
+            trace!("GifDecoder::parse_header: invalid GIF signature");
+            // Be lenient for HLE
+        }
+
+        // In a real implementation:
+        // 1. Parse logical screen descriptor (width, height, global color table flag)
+        // 2. Parse global color table if present
+        // 3. Parse image descriptor and local color table for each frame
+        // 4. Parse graphic control extension for animation timing and disposal
+        // 5. Decompress LZW-compressed image data
+
+        // Use placeholder values
+        self.width = 640;
+        self.height = 480;
+        
+        // Create a simple palette
+        self.global_palette = vec![0u8; 768]; // 256 colors * 3 (RGB)
+        for i in 0..256 {
+            self.global_palette[i * 3] = i as u8;
+            self.global_palette[i * 3 + 1] = i as u8;
+            self.global_palette[i * 3 + 2] = i as u8;
+        }
+        
+        trace!("GifDecoder::parse_header: {}x{}", self.width, self.height);
+        
+        Ok(())
+    }
+
+    /// Decompress LZW-compressed data
+    fn decompress_lzw(&self, compressed: &[u8], min_code_size: u8) -> Vec<u8> {
+        trace!("GifDecoder::decompress_lzw: {} bytes, min_code_size={}", compressed.len(), min_code_size);
+        
+        // In a real implementation:
+        // 1. Initialize code table with min_code_size
+        // 2. Read variable-length codes from bit stream
+        // 3. Build dictionary on-the-fly
+        // 4. Output decompressed pixel indices
+        
+        // Simulate decompressed data
+        let pixel_count = (self.width * self.height) as usize;
+        let mut output = vec![0u8; pixel_count];
+        
+        for i in 0..pixel_count {
+            output[i] = ((i * 255) / pixel_count) as u8;
+        }
+        
+        output
+    }
+
+    /// Parse and add a frame
+    fn add_frame(&mut self, frame_data: &[u8], delay: u16, disposal: GifDisposalMethod) -> Result<(), i32> {
+        trace!("GifDecoder::add_frame: frame {}, delay={}cs", self.frames.len(), delay);
+        
+        // Decompress frame data (LZW with min code size 8)
+        let decompressed = self.decompress_lzw(frame_data, 8);
+        
+        let frame = GifFrame {
+            delay,
+            x_offset: 0,
+            y_offset: 0,
+            width: self.width as u16,
+            height: self.height as u16,
+            disposal_method: disposal,
+            data: decompressed,
+        };
+        
+        self.frames.push(frame);
+        Ok(())
+    }
+
+    /// Decode a single frame to RGBA
+    fn decode_frame(&self, frame_index: usize, dst_buffer: &mut [u8]) -> Result<(), i32> {
+        if frame_index >= self.frames.len() {
+            return Err(CELL_GIFDEC_ERROR_ARG);
+        }
+        
+        let frame = &self.frames[frame_index];
+        let pixel_count = (self.width * self.height) as usize;
+        let required_size = pixel_count * 4;
+        
+        if dst_buffer.len() < required_size {
+            return Err(CELL_GIFDEC_ERROR_ARG);
+        }
+        
+        // Convert indexed color to RGBA using global palette
+        for i in 0..pixel_count.min(frame.data.len()) {
+            let palette_index = frame.data[i] as usize;
+            let palette_offset = palette_index * 3;
+            
+            if palette_offset + 2 < self.global_palette.len() {
+                dst_buffer[i * 4] = self.global_palette[palette_offset];         // R
+                dst_buffer[i * 4 + 1] = self.global_palette[palette_offset + 1]; // G
+                dst_buffer[i * 4 + 2] = self.global_palette[palette_offset + 2]; // B
+                dst_buffer[i * 4 + 3] = 255;                                     // A (opaque)
+            } else {
+                dst_buffer[i * 4] = 0;
+                dst_buffer[i * 4 + 1] = 0;
+                dst_buffer[i * 4 + 2] = 0;
+                dst_buffer[i * 4 + 3] = 255;
+            }
+        }
+        
+        trace!("GifDecoder::decode_frame: frame {} decoded", frame_index);
+        Ok(())
+    }
+
+    /// Decode current frame and advance
+    fn decode_next_frame(&mut self, dst_buffer: &mut [u8]) -> Result<bool, i32> {
+        if self.frames.is_empty() {
+            return Err(CELL_GIFDEC_ERROR_EMPTY);
+        }
+        
+        self.decode_frame(self.current_frame, dst_buffer)?;
+        
+        self.current_frame += 1;
+        
+        // Loop back if at end and looping is enabled
+        if self.current_frame >= self.frames.len() {
+            if self.loop_count == 0 {
+                // Infinite loop
+                self.current_frame = 0;
+                Ok(true) // Looped
+            } else {
+                // Finished
+                self.current_frame = self.frames.len() - 1;
+                Ok(false) // No more frames
+            }
+        } else {
+            Ok(true) // More frames available
+        }
+    }
+
+    /// Get frame count
+    fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// Get frame delay
+    fn get_frame_delay(&self, frame_index: usize) -> u16 {
+        if frame_index < self.frames.len() {
+            self.frames[frame_index].delay
+        } else {
+            10 // Default 100ms
+        }
+    }
+
+    /// Reset to first frame
+    fn reset(&mut self) {
+        self.current_frame = 0;
+    }
+}
+
 /// Entry for a main GIF decoder handle
 struct GifDecEntry {
     main_handle: u32,
@@ -84,6 +310,7 @@ struct GifSubDecEntry {
     info: CellGifDecOutParam,
     src_addr: u32,
     src_size: u32,
+    decoder: GifDecoder,
 }
 
 /// Manager for GIF decoder instances
@@ -139,17 +366,26 @@ impl GifDecManager {
         let sub_handle = entry.next_sub_handle;
         entry.next_sub_handle += 1;
 
+        // Create decoder and add a default frame for static images
+        let mut decoder = GifDecoder::new();
+        decoder.width = 640;
+        decoder.height = 480;
+        
+        // Add a single frame for static GIF or first frame for animated
+        let _ = decoder.add_frame(&[], 10, GifDisposalMethod::None);
+
         // Create sub decoder entry with default info
         let sub_entry = GifSubDecEntry {
             sub_handle,
             info: CellGifDecOutParam {
-                width: 0,
-                height: 0,
+                width: decoder.width,
+                height: decoder.height,
                 num_components: 4, // RGBA
                 color_space: 0,    // RGB
             },
             src_addr,
             src_size,
+            decoder,
         };
 
         entry.sub_handles.insert(sub_handle, sub_entry);
@@ -189,6 +425,41 @@ impl GifDecManager {
             .ok_or(CELL_GIFDEC_ERROR_ARG)?;
 
         Ok(sub_entry.info)
+    }
+
+    /// Decode GIF frame
+    pub fn decode_frame(&mut self, main_handle: u32, sub_handle: u32, dst_buffer: &mut [u8]) -> Result<(), i32> {
+        let entry = self.decoders.get_mut(&main_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        let sub_entry = entry.sub_handles.get_mut(&sub_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        sub_entry.decoder.decode_next_frame(dst_buffer)?;
+        Ok(())
+    }
+
+    /// Get frame count for animated GIF
+    pub fn get_frame_count(&self, main_handle: u32, sub_handle: u32) -> Result<usize, i32> {
+        let entry = self.decoders.get(&main_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        let sub_entry = entry.sub_handles.get(&sub_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        Ok(sub_entry.decoder.frame_count())
+    }
+
+    /// Reset to first frame
+    pub fn reset_animation(&mut self, main_handle: u32, sub_handle: u32) -> Result<(), i32> {
+        let entry = self.decoders.get_mut(&main_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        let sub_entry = entry.sub_handles.get_mut(&sub_handle)
+            .ok_or(CELL_GIFDEC_ERROR_ARG)?;
+
+        sub_entry.decoder.reset();
+        Ok(())
     }
 }
 
