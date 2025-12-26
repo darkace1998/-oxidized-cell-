@@ -116,6 +116,18 @@ impl EmulatorRunner {
                 oc_core::error::RsxError::Vulkan(e)
             ))
     }
+    
+    /// Get the current framebuffer data for display
+    pub fn get_framebuffer(&self) -> Option<oc_rsx::FramebufferData> {
+        let rsx = self.rsx_thread.read();
+        rsx.get_framebuffer()
+    }
+    
+    /// Get the framebuffer dimensions
+    pub fn get_framebuffer_dimensions(&self) -> (u32, u32) {
+        let rsx = self.rsx_thread.read();
+        rsx.get_dimensions()
+    }
 
     /// Get the current state
     pub fn state(&self) -> RunnerState {

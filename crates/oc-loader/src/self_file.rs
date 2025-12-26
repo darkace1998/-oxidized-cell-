@@ -636,15 +636,30 @@ impl SelfLoader {
             // Copy to the correct position in ELF
             // Find the matching program header
             if (section_hdr.section_index as usize) < program_headers.len() {
-                let (_, p_offset, _, _, _) = program_headers[section_hdr.section_index as usize];
+                let (_, p_offset, _, _p_filesz, _) = program_headers[section_hdr.section_index as usize];
                 let dest_offset = p_offset as usize;
+                let section_data = &final_section[..];
                 
-                if elf_data.len() < dest_offset + final_section.len() {
-                    elf_data.resize(dest_offset + final_section.len(), 0);
+                // Check if this section data starts with ELF magic
+                // If so, it contains the full segment including headers
+                let has_elf_magic = section_data.len() >= 4 && 
+                    section_data[0..4] == [0x7F, b'E', b'L', b'F'];
+                
+                if has_elf_magic && dest_offset == 0 {
+                    // This section contains the entire ELF from the beginning
+                    // Replace our entire elf_data with this
+                    debug!("Section {} contains ELF header, using as base", i);
+                    elf_data.clear();
+                    elf_data.extend_from_slice(section_data);
+                } else {
+                    // Normal case - place at the specified offset
+                    if elf_data.len() < dest_offset + section_data.len() {
+                        elf_data.resize(dest_offset + section_data.len(), 0);
+                    }
+                    elf_data[dest_offset..dest_offset + section_data.len()].copy_from_slice(section_data);
                 }
                 
-                elf_data[dest_offset..dest_offset + final_section.len()].copy_from_slice(&final_section);
-                debug!("Wrote section {} ({} bytes) to ELF offset 0x{:x}", i, final_section.len(), dest_offset);
+                debug!("Wrote section {} ({} bytes) to ELF offset 0x{:x}", i, section_data.len(), dest_offset);
                 sections_written += 1;
             } else {
                 warn!("Section {} has invalid section_index {} (only {} program headers)", 

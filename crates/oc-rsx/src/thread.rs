@@ -176,6 +176,16 @@ impl RsxThread {
     pub fn memory(&self) -> &Arc<MemoryManager> {
         &self.memory
     }
+    
+    /// Get the current framebuffer contents for display
+    pub fn get_framebuffer(&self) -> Option<crate::backend::FramebufferData> {
+        self.backend.get_framebuffer()
+    }
+    
+    /// Get the framebuffer dimensions
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        self.backend.get_dimensions()
+    }
 }
 
 #[cfg(test)]

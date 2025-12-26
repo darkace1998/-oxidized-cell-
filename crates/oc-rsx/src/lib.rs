@@ -15,5 +15,6 @@ pub mod thread;
 pub mod timing;
 pub mod vertex;
 
+pub use backend::FramebufferData;
 pub use state::RsxState;
 pub use thread::RsxThread;

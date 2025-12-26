@@ -72,6 +72,10 @@ pub struct OxidizedCellApp {
     enable_frame_skipping: bool,
     /// Frame skip counter
     _frame_skip_counter: u32,
+    /// Framebuffer texture handle for display
+    framebuffer_texture: Option<egui::TextureHandle>,
+    /// Last framebuffer dimensions
+    last_fb_dimensions: (u32, u32),
 }
 
 /// Application views
@@ -149,6 +153,8 @@ impl OxidizedCellApp {
             enable_frame_limiting: true,
             enable_frame_skipping: false,
             _frame_skip_counter: 0,
+            framebuffer_texture: None,
+            last_fb_dimensions: (0, 0),
         }
     }
 
@@ -786,12 +792,57 @@ impl OxidizedCellApp {
                 egui::Sense::hover()
             );
             
-            // Draw RSX output area (placeholder with state information)
-            ui.painter().rect_filled(
-                rect,
-                4.0,
-                egui::Color32::from_gray(20),
-            );
+            // Try to get and display framebuffer from emulator
+            let mut has_framebuffer = false;
+            if emulation_state == RunnerState::Running || emulation_state == RunnerState::Paused {
+                if let Some(ref emulator) = self.emulator {
+                    let runner = emulator.read();
+                    if let Some(fb) = runner.get_framebuffer() {
+                        // Update texture if dimensions changed or texture doesn't exist
+                        let needs_update = self.framebuffer_texture.is_none() 
+                            || self.last_fb_dimensions != (fb.width, fb.height);
+                        
+                        if needs_update {
+                            // Create new texture
+                            let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                [fb.width as usize, fb.height as usize],
+                                &fb.pixels
+                            );
+                            self.framebuffer_texture = Some(ui.ctx().load_texture(
+                                "rsx_framebuffer",
+                                color_image,
+                                egui::TextureOptions::LINEAR
+                            ));
+                            self.last_fb_dimensions = (fb.width, fb.height);
+                        } else if let Some(ref texture) = self.framebuffer_texture {
+                            // Update existing texture with new pixel data
+                            let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                [fb.width as usize, fb.height as usize],
+                                &fb.pixels
+                            );
+                            texture.set(color_image, egui::TextureOptions::LINEAR);
+                        }
+                        
+                        has_framebuffer = true;
+                    }
+                }
+            }
+            
+            // Draw the framebuffer or placeholder
+            if has_framebuffer {
+                if let Some(ref texture) = self.framebuffer_texture {
+                    // Draw the framebuffer texture
+                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    ui.painter().image(texture.id(), rect, uv, egui::Color32::WHITE);
+                }
+            } else {
+                // Draw placeholder
+                ui.painter().rect_filled(
+                    rect,
+                    4.0,
+                    egui::Color32::from_gray(20),
+                );
+            }
 
             // Draw frame border
             ui.painter().rect_stroke(
@@ -800,30 +851,32 @@ impl OxidizedCellApp {
                 egui::Stroke::new(2.0, egui::Color32::from_gray(60)),
             );
 
-            // Display status text based on emulation state
-            let display_text = match emulation_state {
-                RunnerState::Stopped => {
-                    if self.loaded_game_path.is_some() {
-                        "Game Stopped\nPress Start to resume"
-                    } else {
-                        "No Game Loaded\nSelect a game from the Game List"
+            // Display status text only when not displaying framebuffer
+            if !has_framebuffer {
+                let display_text = match emulation_state {
+                    RunnerState::Stopped => {
+                        if self.loaded_game_path.is_some() {
+                            "Game Stopped\nPress Start to resume"
+                        } else {
+                            "No Game Loaded\nSelect a game from the Game List"
+                        }
                     }
-                }
-                RunnerState::Running => {
-                    "✓ RSX Output Connected\nRendering to Display\n\nNote: Actual framebuffer rendering will appear here"
-                }
-                RunnerState::Paused => {
-                    "⏸ Paused\nPress Start to resume"
-                }
-            };
+                    RunnerState::Running => {
+                        "Initializing RSX..."
+                    }
+                    RunnerState::Paused => {
+                        "⏸ Paused\nPress Start to resume"
+                    }
+                };
 
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                display_text,
-                egui::FontId::proportional(18.0),
-                ui.visuals().text_color(),
-            );
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    display_text,
+                    egui::FontId::proportional(18.0),
+                    ui.visuals().text_color(),
+                );
+            }
 
             // Show emulator stats when running or paused
             if emulation_state != RunnerState::Stopped {

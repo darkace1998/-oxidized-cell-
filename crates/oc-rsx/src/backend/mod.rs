@@ -5,6 +5,46 @@ pub mod vulkan;
 
 use crate::vertex::VertexAttribute;
 
+/// Framebuffer data for display
+#[derive(Debug, Clone)]
+pub struct FramebufferData {
+    /// Width in pixels
+    pub width: u32,
+    /// Height in pixels
+    pub height: u32,
+    /// RGBA pixel data (4 bytes per pixel)
+    pub pixels: Vec<u8>,
+}
+
+impl FramebufferData {
+    /// Create a new framebuffer with the given dimensions
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            pixels: vec![0; (width * height * 4) as usize],
+        }
+    }
+
+    /// Create a test pattern for debugging
+    pub fn test_pattern(width: u32, height: u32) -> Self {
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        
+        for y in 0..height {
+            for x in 0..width {
+                let i = ((y * width + x) * 4) as usize;
+                // Create a gradient pattern
+                pixels[i] = (x * 255 / width) as u8;     // R
+                pixels[i + 1] = (y * 255 / height) as u8; // G
+                pixels[i + 2] = 128;                       // B
+                pixels[i + 3] = 255;                       // A
+            }
+        }
+        
+        Self { width, height, pixels }
+    }
+}
+
 /// Primitive topology types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimitiveType {
@@ -54,4 +94,11 @@ pub trait GraphicsBackend {
 
     /// Set scissor rectangle
     fn set_scissor(&mut self, x: u32, y: u32, width: u32, height: u32);
+    
+    /// Get the current framebuffer contents as RGBA pixels
+    /// Returns None if the framebuffer is not available
+    fn get_framebuffer(&self) -> Option<FramebufferData>;
+    
+    /// Get the framebuffer dimensions
+    fn get_dimensions(&self) -> (u32, u32);
 }

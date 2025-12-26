@@ -1145,6 +1145,20 @@ impl GraphicsBackend for VulkanBackend {
             }
         }
     }
+    
+    fn get_framebuffer(&self) -> Option<super::FramebufferData> {
+        if !self.initialized {
+            return None;
+        }
+        
+        // For now, return a test pattern until proper GPU readback is implemented
+        // TODO: Implement actual framebuffer readback using staging buffer and vkCmdCopyImageToBuffer
+        Some(super::FramebufferData::test_pattern(self.width, self.height))
+    }
+    
+    fn get_dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
 }
 
 #[cfg(test)]
