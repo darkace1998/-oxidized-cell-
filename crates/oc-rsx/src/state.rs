@@ -69,6 +69,36 @@ pub struct RsxState {
     pub texture_format: [u32; 16],
     pub texture_control: [u32; 16],
     pub texture_filter: [u32; 16],
+    
+    // Alpha test state
+    pub alpha_test_enable: bool,
+    pub alpha_test_func: u32,
+    pub alpha_test_ref: f32,
+    
+    // Polygon offset state
+    pub polygon_offset_fill_enable: bool,
+    pub polygon_offset_line_enable: bool,
+    pub polygon_offset_point_enable: bool,
+    pub polygon_offset_factor: f32,
+    pub polygon_offset_units: f32,
+    
+    // Line and point state
+    pub line_width: f32,
+    pub point_size: f32,
+    pub point_sprite_enable: bool,
+    
+    // Anti-aliasing state
+    pub multisample_enable: bool,
+    pub sample_alpha_to_coverage_enable: bool,
+    pub sample_count: u8,
+    
+    // Primitive restart
+    pub primitive_restart_enable: bool,
+    pub primitive_restart_index: u32,
+    
+    // Occlusion query
+    pub occlusion_query_enable: bool,
+    pub occlusion_query_offset: u32,
 }
 
 impl RsxState {
@@ -77,6 +107,13 @@ impl RsxState {
         Self {
             depth_max: 1.0,
             clear_depth: 1.0,
+            alpha_test_ref: 0.0,
+            polygon_offset_factor: 0.0,
+            polygon_offset_units: 0.0,
+            line_width: 1.0,
+            point_size: 1.0,
+            sample_count: 1,
+            primitive_restart_index: 0xFFFFFFFF,
             ..Default::default()
         }
     }
