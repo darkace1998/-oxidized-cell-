@@ -49,7 +49,7 @@
 - O2 optimization passes
 
 ### System Emulation
-- **LV2 Kernel** - 75% complete syscall implementation
+- **LV2 Kernel** 
   - Process and thread management
   - Synchronization primitives (mutex, cond, semaphore, rwlock)
   - Memory allocation syscalls
