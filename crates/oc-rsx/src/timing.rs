@@ -186,7 +186,8 @@ impl FrameTimer {
             if let Some(target) = self.target_frame_time {
                 let elapsed = now.duration_since(self.last_frame_time);
                 if elapsed < target {
-                    let sleep_time = target - elapsed + self.sleep_debt;
+                    // Use saturating_add to prevent overflow
+                    let sleep_time = (target - elapsed).saturating_add(self.sleep_debt);
                     if sleep_time > Duration::from_micros(100) {
                         let sleep_start = Instant::now();
                         std::thread::sleep(sleep_time);

@@ -399,15 +399,18 @@ mod tests {
     }
 
     #[test]
-    fn test_downscale_detection() {
+    fn test_internal_resolution_supersampling() {
+        // Test supersampling scenario: internal render at 200% of native
         let mut scaler = ResolutionScaler::from_1080p();
         scaler.set_render_scale(RenderScale::new(200.0)); // 3840x2160 internal
         scaler.set_target_resolution(1920, 1080);
         scaler.set_mode(ScalingMode::Native);
         
-        // Internal is 3840x2160, output is 1920x1080 (native), so downscale needed
-        // Actually the output is native 1920x1080, but internal is larger
+        // Internal resolution is 200% of source (3840x2160)
+        // Output is native source resolution (1920x1080)
         let stats = scaler.stats();
+        assert_eq!(stats.source_resolution, (1920, 1080));
         assert_eq!(stats.internal_resolution, (3840, 2160));
+        assert_eq!(stats.output_resolution, (1920, 1080));
     }
 }

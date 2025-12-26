@@ -71,8 +71,9 @@ pub mod format {
             ARGB8 | A8R8G8B8 | XRGB8 | DEPTH24_D8 | DEPTH24_D8_FLOAT | D8R8G8B8 | X32_FLOAT | Y16_X16 | Y16_X16_FLOAT => 4,
             W16_Z16_Y16_X16_FLOAT => 8,
             W32_Z32_Y32_X32_FLOAT => 16,
-            DXT1 | ETC1_RGB8 | ETC2_RGB8 | ETC2_RGB8A1 | EAC_R11 | EAC_R11_SIGNED => 0, // Block compressed - use block_size
-            DXT3 | DXT5 | ETC2_RGBA8 | EAC_RG11 | EAC_RG11_SIGNED => 0, // Block compressed
+            // Block compressed formats return 0 - use block_size() function instead
+            DXT1 | ETC1_RGB8 | ETC2_RGB8 | ETC2_RGB8A1 | EAC_R11 | EAC_R11_SIGNED |
+            DXT3 | DXT5 | ETC2_RGBA8 | EAC_RG11 | EAC_RG11_SIGNED |
             ASTC_4X4 | ASTC_5X4 | ASTC_5X5 | ASTC_6X5 | ASTC_6X6 | ASTC_8X5 | ASTC_8X6 | ASTC_8X8 |
             ASTC_10X5 | ASTC_10X6 | ASTC_10X8 | ASTC_10X10 | ASTC_12X10 | ASTC_12X12 => 0,
             _ => 4, // Default to 4 bytes

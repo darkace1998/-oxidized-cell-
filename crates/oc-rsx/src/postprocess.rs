@@ -204,14 +204,17 @@ impl PostProcessPipeline {
     }
 
     /// Execute a single post-processing pass
-    fn execute_pass(&self, _pass: &PostProcessPass) {
-        // In a real implementation, this would:
-        // 1. Bind the appropriate shader for the effect
-        // 2. Set up uniforms based on pass parameters
-        // 3. Bind input texture (previous pass output)
-        // 4. Bind output render target
-        // 5. Draw a full-screen quad
-        tracing::trace!("Executing post-process pass");
+    /// 
+    /// TODO: Implement the actual Vulkan rendering pipeline integration.
+    /// This will require:
+    /// 1. Bind the appropriate shader for the effect
+    /// 2. Set up uniforms based on pass parameters
+    /// 3. Bind input texture (previous pass output)
+    /// 4. Bind output render target
+    /// 5. Draw a full-screen quad
+    fn execute_pass(&self, pass: &PostProcessPass) {
+        tracing::trace!("Executing post-process pass: {:?} (intensity: {})", 
+            pass.effect, pass.intensity);
     }
 
     /// Get statistics about the pipeline
