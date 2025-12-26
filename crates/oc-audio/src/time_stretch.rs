@@ -102,12 +102,11 @@ impl AudioTimeStretcher {
         let window_size = self.config.window_size;
         let overlap = self.config.overlap;
         let hop_in = (window_size - overlap) as f32;
-        let hop_out = hop_in * factor;
 
         let frames = self.input_buffer.len() / self.config.num_channels;
         
         while self.position + window_size <= frames {
-            let mut out_pos = (self.position as f32 * factor) as usize;
+            let out_pos = (self.position as f32 * factor) as usize;
             
             // Process each channel
             for ch in 0..self.config.num_channels {
