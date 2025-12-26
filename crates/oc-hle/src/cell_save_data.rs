@@ -5,6 +5,13 @@
 use std::collections::HashMap;
 use tracing::{debug, trace};
 
+/// VFS backend reference placeholder
+/// In a real implementation, this would hold a reference to oc-vfs
+type VfsBackend = Option<()>;
+
+/// Encryption key type (128-bit AES key)
+type EncryptionKey = [u8; 16];
+
 /// Maximum directory name length
 pub const CELL_SAVEDATA_DIRNAME_SIZE: usize = 32;
 
@@ -128,6 +135,12 @@ pub struct SaveDataManager {
     entries: HashMap<String, SaveDataEntry>,
     /// Base path for save data
     base_path: String,
+    /// VFS backend (for file operations)
+    vfs_backend: VfsBackend,
+    /// Encryption enabled
+    encryption_enabled: bool,
+    /// Default encryption key (per-user)
+    encryption_key: EncryptionKey,
 }
 
 impl SaveDataManager {
@@ -136,6 +149,9 @@ impl SaveDataManager {
         Self {
             entries: HashMap::new(),
             base_path: "/dev_hdd0/savedata".to_string(),
+            vfs_backend: None,
+            encryption_enabled: true,
+            encryption_key: [0u8; 16], // Default key, should be user-specific
         }
     }
 
@@ -232,6 +248,157 @@ impl SaveDataManager {
     /// Get base path
     pub fn get_base_path(&self) -> &str {
         &self.base_path
+    }
+
+    // ========================================================================
+    // VFS Backend Integration
+    // ========================================================================
+
+    /// Connect to VFS backend
+    /// 
+    /// This would integrate with oc-vfs for actual file system operations.
+    /// For now, this is a stub implementation.
+    pub fn connect_vfs_backend(&mut self, _backend: VfsBackend) -> i32 {
+        debug!("SaveDataManager::connect_vfs_backend");
+        
+        // In a real implementation:
+        // 1. Store the VFS backend reference
+        // 2. Verify VFS is properly initialized
+        // 3. Set up save data mount points
+        
+        self.vfs_backend = None; // Would store actual backend
+        
+        0 // CELL_OK
+    }
+
+    /// Read file from save directory (through VFS)
+    pub fn read_file(&self, dir_name: &str, file_name: &str) -> Result<Vec<u8>, i32> {
+        if !self.directory_exists(dir_name) {
+            return Err(CELL_SAVEDATA_ERROR_NODATA);
+        }
+        
+        debug!("SaveDataManager::read_file: {}/{}", dir_name, file_name);
+        
+        // In a real implementation, this would:
+        // 1. Construct full path through VFS
+        // 2. Read file through VFS backend
+        // 3. Decrypt if encrypted
+        
+        // For HLE, return empty data
+        Ok(Vec::new())
+    }
+
+    /// Write file to save directory (through VFS)
+    pub fn write_file(&mut self, dir_name: &str, file_name: &str, data: &[u8]) -> i32 {
+        // Ensure directory exists
+        if !self.directory_exists(dir_name) {
+            let result = self.create_directory(dir_name);
+            if result != 0 {
+                return result;
+            }
+        }
+        
+        debug!("SaveDataManager::write_file: {}/{}, {} bytes", dir_name, file_name, data.len());
+        
+        // In a real implementation, this would:
+        // 1. Construct full path through VFS
+        // 2. Encrypt data if needed
+        // 3. Write file through VFS backend
+        // 4. Update directory stat
+        
+        // Add file to tracking
+        let _ = self.add_file(dir_name, file_name);
+        
+        0 // CELL_OK
+    }
+
+    /// Delete file from save directory (through VFS)
+    pub fn delete_file(&mut self, dir_name: &str, file_name: &str) -> i32 {
+        if !self.directory_exists(dir_name) {
+            return CELL_SAVEDATA_ERROR_NODATA;
+        }
+        
+        debug!("SaveDataManager::delete_file: {}/{}", dir_name, file_name);
+        
+        // In a real implementation, this would:
+        // 1. Construct full path through VFS
+        // 2. Delete file through VFS backend
+        // 3. Update directory stat
+        
+        // Remove from tracking
+        if let Some(entry) = self.entries.get_mut(dir_name) {
+            entry.files.retain(|f| f != file_name);
+        }
+        
+        0 // CELL_OK
+    }
+
+    // ========================================================================
+    // Encryption/Decryption
+    // ========================================================================
+
+    /// Enable or disable encryption
+    pub fn set_encryption_enabled(&mut self, enabled: bool) {
+        debug!("SaveDataManager::set_encryption_enabled: {}", enabled);
+        self.encryption_enabled = enabled;
+    }
+
+    /// Check if encryption is enabled
+    pub fn is_encryption_enabled(&self) -> bool {
+        self.encryption_enabled
+    }
+
+    /// Set encryption key
+    pub fn set_encryption_key(&mut self, key: &[u8]) -> i32 {
+        if key.len() != 16 {
+            return CELL_SAVEDATA_ERROR_PARAM;
+        }
+        
+        debug!("SaveDataManager::set_encryption_key: key length={}", key.len());
+        self.encryption_key.copy_from_slice(key);
+        
+        0 // CELL_OK
+    }
+
+    /// Encrypt save data
+    /// 
+    /// Uses AES-128 encryption for save data protection.
+    /// In a real implementation, this would use proper AES encryption.
+    pub fn encrypt_data(&self, data: &[u8]) -> Vec<u8> {
+        if !self.encryption_enabled {
+            return data.to_vec();
+        }
+        
+        trace!("SaveDataManager::encrypt_data: {} bytes", data.len());
+        
+        // For HLE, we simulate encryption with a simple XOR
+        // Real implementation would use AES-128-CBC or similar
+        let mut encrypted = data.to_vec();
+        for (i, byte) in encrypted.iter_mut().enumerate() {
+            *byte ^= self.encryption_key[i % 16];
+        }
+        
+        encrypted
+    }
+
+    /// Decrypt save data
+    /// 
+    /// Decrypts AES-128 encrypted save data.
+    /// In a real implementation, this would use proper AES decryption.
+    pub fn decrypt_data(&self, data: &[u8]) -> Vec<u8> {
+        if !self.encryption_enabled {
+            return data.to_vec();
+        }
+        
+        trace!("SaveDataManager::decrypt_data: {} bytes", data.len());
+        
+        // For HLE, encryption is symmetric XOR, so decrypt is the same
+        self.encrypt_data(data)
+    }
+
+    /// Get encryption key
+    pub fn get_encryption_key(&self) -> &EncryptionKey {
+        &self.encryption_key
     }
 }
 
@@ -559,5 +726,137 @@ mod tests {
     fn test_save_data_error_codes() {
         assert_eq!(CELL_SAVEDATA_ERROR_CBRESULT, 0x8002b401u32 as i32);
         assert_eq!(CELL_SAVEDATA_ERROR_NODATA, 0x8002b410u32 as i32);
+    }
+
+    // ========================================================================
+    // VFS Backend Tests
+    // ========================================================================
+
+    #[test]
+    fn test_save_data_manager_vfs_connection() {
+        let mut manager = SaveDataManager::new();
+        assert_eq!(manager.connect_vfs_backend(None), 0);
+    }
+
+    #[test]
+    fn test_save_data_manager_file_operations() {
+        let mut manager = SaveDataManager::new();
+        manager.create_directory("SAVE0001");
+        
+        // Write file
+        let data = b"test data";
+        assert_eq!(manager.write_file("SAVE0001", "DATA.BIN", data), 0);
+        
+        // Read file
+        let result = manager.read_file("SAVE0001", "DATA.BIN");
+        assert!(result.is_ok());
+        
+        // Delete file
+        assert_eq!(manager.delete_file("SAVE0001", "DATA.BIN"), 0);
+    }
+
+    #[test]
+    fn test_save_data_manager_file_operations_errors() {
+        let mut manager = SaveDataManager::new();
+        
+        // Read from non-existent directory
+        assert!(manager.read_file("NONEXISTENT", "DATA.BIN").is_err());
+        
+        // Delete from non-existent directory
+        assert!(manager.delete_file("NONEXISTENT", "DATA.BIN") != 0);
+    }
+
+    // ========================================================================
+    // Encryption Tests
+    // ========================================================================
+
+    #[test]
+    fn test_save_data_manager_encryption_enabled() {
+        let mut manager = SaveDataManager::new();
+        
+        // Encryption enabled by default
+        assert!(manager.is_encryption_enabled());
+        
+        // Disable encryption
+        manager.set_encryption_enabled(false);
+        assert!(!manager.is_encryption_enabled());
+        
+        // Re-enable encryption
+        manager.set_encryption_enabled(true);
+        assert!(manager.is_encryption_enabled());
+    }
+
+    #[test]
+    fn test_save_data_manager_encryption_key() {
+        let mut manager = SaveDataManager::new();
+        
+        let key = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                   0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10];
+        
+        assert_eq!(manager.set_encryption_key(&key), 0);
+        assert_eq!(manager.get_encryption_key(), &key);
+    }
+
+    #[test]
+    fn test_save_data_manager_encryption_key_invalid() {
+        let mut manager = SaveDataManager::new();
+        
+        // Too short
+        let short_key = [0x01, 0x02, 0x03];
+        assert!(manager.set_encryption_key(&short_key) != 0);
+        
+        // Too long
+        let long_key = [0u8; 32];
+        assert!(manager.set_encryption_key(&long_key) != 0);
+    }
+
+    #[test]
+    fn test_save_data_manager_encrypt_decrypt() {
+        let mut manager = SaveDataManager::new();
+        
+        let key = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                   0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10];
+        manager.set_encryption_key(&key);
+        
+        let original_data = b"Hello, save data encryption!";
+        
+        // Encrypt
+        let encrypted = manager.encrypt_data(original_data);
+        
+        // Should be different from original
+        assert_ne!(encrypted.as_slice(), original_data);
+        
+        // Decrypt
+        let decrypted = manager.decrypt_data(&encrypted);
+        
+        // Should match original
+        assert_eq!(decrypted.as_slice(), original_data);
+    }
+
+    #[test]
+    fn test_save_data_manager_encrypt_disabled() {
+        let mut manager = SaveDataManager::new();
+        manager.set_encryption_enabled(false);
+        
+        let data = b"test data";
+        
+        // With encryption disabled, data should be unchanged
+        let encrypted = manager.encrypt_data(data);
+        assert_eq!(encrypted.as_slice(), data);
+        
+        let decrypted = manager.decrypt_data(data);
+        assert_eq!(decrypted.as_slice(), data);
+    }
+
+    #[test]
+    fn test_save_data_manager_encrypt_empty_data() {
+        let manager = SaveDataManager::new();
+        
+        let empty_data: &[u8] = &[];
+        let encrypted = manager.encrypt_data(empty_data);
+        assert_eq!(encrypted.len(), 0);
+        
+        let decrypted = manager.decrypt_data(&encrypted);
+        assert_eq!(decrypted.len(), 0);
     }
 }

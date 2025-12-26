@@ -123,6 +123,46 @@ pub struct GameInstallInfo {
     pub error_code: i32,
 }
 
+/// Game update state
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GameUpdateState {
+    /// No update available
+    #[default]
+    NoUpdate = 0,
+    /// Update available
+    Available = 1,
+    /// Update downloading
+    Downloading = 2,
+    /// Update ready to install
+    Ready = 3,
+    /// Update installing
+    Installing = 4,
+    /// Update installed
+    Installed = 5,
+    /// Update failed
+    Failed = 6,
+}
+
+/// Game update info
+#[derive(Debug, Clone, Default)]
+pub struct GameUpdateInfo {
+    /// Update state
+    pub state: GameUpdateState,
+    /// Update version
+    pub version: String,
+    /// Update size in KB
+    pub size_kb: u64,
+    /// Download progress (0-100)
+    pub download_progress: u32,
+    /// Installation progress (0-100)
+    pub install_progress: u32,
+    /// Update URL
+    pub url: String,
+    /// Error code (if failed)
+    pub error_code: i32,
+}
+
 /// Game manager
 pub struct GameManager {
     /// Current game data type
@@ -149,6 +189,8 @@ pub struct GameManager {
     content_info_path: String,
     /// User directory path
     usrdir_path: String,
+    /// Game update info
+    update_info: GameUpdateInfo,
 }
 
 impl GameManager {
@@ -167,6 +209,7 @@ impl GameManager {
             install_info: GameInstallInfo::default(),
             content_info_path: String::new(),
             usrdir_path: String::new(),
+            update_info: GameUpdateInfo::default(),
         };
         
         // Initialize default parameters
@@ -501,6 +544,166 @@ impl GameManager {
     /// Reset installation state
     pub fn reset_installation(&mut self) {
         self.install_info = GameInstallInfo::default();
+    }
+
+    // ========================================================================
+    // Game Update Handling
+    // ========================================================================
+
+    /// Check for game updates
+    pub fn check_for_updates(&mut self) -> i32 {
+        debug!("GameManager::check_for_updates");
+        
+        // In a real implementation, this would:
+        // 1. Connect to update server
+        // 2. Check current game version against available versions
+        // 3. Download update metadata
+        
+        // For HLE, we simulate no updates available by default
+        self.update_info.state = GameUpdateState::NoUpdate;
+        
+        0 // CELL_OK
+    }
+
+    /// Start update download
+    pub fn start_update_download(&mut self, url: &str, size_kb: u64, version: &str) -> i32 {
+        if self.update_info.state == GameUpdateState::Downloading 
+            || self.update_info.state == GameUpdateState::Installing {
+            return 0x8002b105u32 as i32; // Already in progress
+        }
+        
+        debug!(
+            "GameManager::start_update_download: url={}, size={} KB, version={}",
+            url, size_kb, version
+        );
+        
+        self.update_info = GameUpdateInfo {
+            state: GameUpdateState::Downloading,
+            version: version.to_string(),
+            size_kb,
+            download_progress: 0,
+            install_progress: 0,
+            url: url.to_string(),
+            error_code: 0,
+        };
+        
+        0 // CELL_OK
+    }
+
+    /// Update download progress
+    pub fn update_download_progress(&mut self, downloaded_kb: u64) -> i32 {
+        if self.update_info.state != GameUpdateState::Downloading {
+            return 0x8002b101u32 as i32; // Not downloading
+        }
+        
+        if self.update_info.size_kb > 0 {
+            self.update_info.download_progress = 
+                ((downloaded_kb * 100) / self.update_info.size_kb) as u32;
+            self.update_info.download_progress = self.update_info.download_progress.min(100);
+        }
+        
+        trace!(
+            "GameManager: download progress {}% ({}/{} KB)",
+            self.update_info.download_progress,
+            downloaded_kb,
+            self.update_info.size_kb
+        );
+        
+        0 // CELL_OK
+    }
+
+    /// Complete update download
+    pub fn complete_update_download(&mut self) -> i32 {
+        if self.update_info.state != GameUpdateState::Downloading {
+            return 0x8002b101u32 as i32; // Not downloading
+        }
+        
+        debug!("GameManager::complete_update_download");
+        
+        self.update_info.state = GameUpdateState::Ready;
+        self.update_info.download_progress = 100;
+        
+        0 // CELL_OK
+    }
+
+    /// Start update installation
+    pub fn start_update_installation(&mut self) -> i32 {
+        if self.update_info.state != GameUpdateState::Ready {
+            return 0x8002b101u32 as i32; // Update not ready
+        }
+        
+        debug!("GameManager::start_update_installation: version={}", self.update_info.version);
+        
+        self.update_info.state = GameUpdateState::Installing;
+        self.update_info.install_progress = 0;
+        
+        0 // CELL_OK
+    }
+
+    /// Update installation progress
+    pub fn update_install_progress(&mut self, progress: u32) -> i32 {
+        if self.update_info.state != GameUpdateState::Installing {
+            return 0x8002b101u32 as i32; // Not installing
+        }
+        
+        self.update_info.install_progress = progress.min(100);
+        
+        trace!(
+            "GameManager: update installation progress {}%",
+            self.update_info.install_progress
+        );
+        
+        0 // CELL_OK
+    }
+
+    /// Complete update installation
+    pub fn complete_update_installation(&mut self) -> i32 {
+        if self.update_info.state != GameUpdateState::Installing {
+            return 0x8002b101u32 as i32; // Not installing
+        }
+        
+        debug!("GameManager::complete_update_installation: version={}", self.update_info.version);
+        
+        self.update_info.state = GameUpdateState::Installed;
+        self.update_info.install_progress = 100;
+        
+        // Update game version
+        self.param_string.insert(
+            CellGameParamId::Version as u32,
+            self.update_info.version.clone(),
+        );
+        
+        0 // CELL_OK
+    }
+
+    /// Fail update with error
+    pub fn fail_update(&mut self, error_code: i32) -> i32 {
+        debug!("GameManager::fail_update: error=0x{:08X}", error_code);
+        
+        self.update_info.state = GameUpdateState::Failed;
+        self.update_info.error_code = error_code;
+        
+        0 // CELL_OK
+    }
+
+    /// Get update state
+    pub fn get_update_state(&self) -> GameUpdateState {
+        self.update_info.state
+    }
+
+    /// Get update info
+    pub fn get_update_info(&self) -> &GameUpdateInfo {
+        &self.update_info
+    }
+
+    /// Check if update is available
+    pub fn is_update_available(&self) -> bool {
+        self.update_info.state == GameUpdateState::Available
+    }
+
+    /// Reset update state
+    pub fn reset_update(&mut self) {
+        self.update_info = GameUpdateInfo::default();
     }
 }
 
@@ -943,5 +1146,118 @@ mod tests {
         assert_eq!(GameInstallState::Installing as u32, 1);
         assert_eq!(GameInstallState::Installed as u32, 2);
         assert_eq!(GameInstallState::Failed as u32, 3);
+    }
+
+    // ========================================================================
+    // Game Update Tests
+    // ========================================================================
+
+    #[test]
+    fn test_game_manager_update_check() {
+        let mut manager = GameManager::new();
+        
+        assert_eq!(manager.check_for_updates(), 0);
+        assert_eq!(manager.get_update_state(), GameUpdateState::NoUpdate);
+    }
+
+    #[test]
+    fn test_game_manager_update_download_lifecycle() {
+        let mut manager = GameManager::new();
+        
+        // Not downloading initially
+        assert_eq!(manager.get_update_state(), GameUpdateState::NoUpdate);
+        
+        // Start download
+        assert_eq!(
+            manager.start_update_download("http://example.com/update.pkg", 100 * 1024, "02.00"),
+            0
+        );
+        assert_eq!(manager.get_update_state(), GameUpdateState::Downloading);
+        
+        // Update progress
+        assert_eq!(manager.update_download_progress(50 * 1024), 0);
+        assert_eq!(manager.get_update_info().download_progress, 50);
+        
+        // Complete download
+        assert_eq!(manager.complete_update_download(), 0);
+        assert_eq!(manager.get_update_state(), GameUpdateState::Ready);
+    }
+
+    #[test]
+    fn test_game_manager_update_installation() {
+        let mut manager = GameManager::new();
+        manager.start_update_download("http://example.com/update.pkg", 1024, "02.00");
+        manager.complete_update_download();
+        
+        // Start installation
+        assert_eq!(manager.start_update_installation(), 0);
+        assert_eq!(manager.get_update_state(), GameUpdateState::Installing);
+        
+        // Update progress
+        assert_eq!(manager.update_install_progress(75), 0);
+        assert_eq!(manager.get_update_info().install_progress, 75);
+        
+        // Complete installation
+        assert_eq!(manager.complete_update_installation(), 0);
+        assert_eq!(manager.get_update_state(), GameUpdateState::Installed);
+        
+        // Version should be updated
+        assert_eq!(manager.get_param_string(CellGameParamId::Version as u32), Some("02.00"));
+    }
+
+    #[test]
+    fn test_game_manager_update_failure() {
+        let mut manager = GameManager::new();
+        manager.start_update_download("http://example.com/update.pkg", 1024, "02.00");
+        
+        manager.fail_update(0x80010001u32 as i32);
+        
+        assert_eq!(manager.get_update_state(), GameUpdateState::Failed);
+        assert_eq!(manager.get_update_info().error_code, 0x80010001u32 as i32);
+    }
+
+    #[test]
+    fn test_game_manager_update_double_start() {
+        let mut manager = GameManager::new();
+        
+        // First start succeeds
+        assert_eq!(manager.start_update_download("http://example.com/update1.pkg", 1024, "02.00"), 0);
+        
+        // Second start fails
+        assert!(manager.start_update_download("http://example.com/update2.pkg", 2048, "03.00") != 0);
+    }
+
+    #[test]
+    fn test_game_manager_update_reset() {
+        let mut manager = GameManager::new();
+        
+        manager.start_update_download("http://example.com/update.pkg", 1024, "02.00");
+        manager.complete_update_download();
+        
+        manager.reset_update();
+        
+        assert_eq!(manager.get_update_state(), GameUpdateState::NoUpdate);
+        assert_eq!(manager.get_update_info().version, "");
+    }
+
+    #[test]
+    fn test_game_manager_update_available() {
+        let mut manager = GameManager::new();
+        
+        assert!(!manager.is_update_available());
+        
+        manager.update_info.state = GameUpdateState::Available;
+        assert!(manager.is_update_available());
+    }
+
+    #[test]
+    fn test_game_update_state_enum() {
+        assert_eq!(GameUpdateState::NoUpdate as u32, 0);
+        assert_eq!(GameUpdateState::Available as u32, 1);
+        assert_eq!(GameUpdateState::Downloading as u32, 2);
+        assert_eq!(GameUpdateState::Ready as u32, 3);
+        assert_eq!(GameUpdateState::Installing as u32, 4);
+        assert_eq!(GameUpdateState::Installed as u32, 5);
+        assert_eq!(GameUpdateState::Failed as u32, 6);
     }
 }
