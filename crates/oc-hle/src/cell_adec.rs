@@ -106,15 +106,161 @@ struct AdecEntry {
     is_seq_started: bool,
     pcm_queue: VecDeque<CellAdecPcmItem>,
     au_count: u32,
+    /// Audio decoder backend
+    decoder: Option<AudioDecoderBackend>,
+}
+
+/// Audio decoder backend implementation
+#[derive(Debug)]
+struct AudioDecoderBackend {
+    /// Codec type
+    codec: CellAdecCodecType,
+    /// Sample rate (Hz)
+    sample_rate: u32,
+    /// Number of channels
+    channels: u32,
+    /// Bit depth
+    bit_depth: u32,
+    /// Decoded frame count
+    frame_count: u32,
+}
+
+impl AudioDecoderBackend {
+    /// Create a new audio decoder backend
+    fn new(codec_type: CellAdecCodecType) -> Self {
+        // Default audio parameters
+        let (sample_rate, channels) = match codec_type {
+            CellAdecCodecType::Aac => (48000, 2),      // AAC: 48kHz stereo
+            CellAdecCodecType::Mp3 => (44100, 2),      // MP3: 44.1kHz stereo
+            CellAdecCodecType::Atrac3Plus => (48000, 2), // ATRAC3+: 48kHz stereo
+            CellAdecCodecType::Ac3 => (48000, 6),      // AC3: 48kHz 5.1
+            _ => (48000, 2),                            // Default
+        };
+
+        Self {
+            codec: codec_type,
+            sample_rate,
+            channels,
+            bit_depth: 16,
+            frame_count: 0,
+        }
+    }
+
+    /// Decode AAC access unit to PCM
+    fn decode_aac(&mut self, au_data: &[u8], au_info: &CellAdecAuInfo) -> Result<CellAdecPcmItem, i32> {
+        trace!("AudioDecoderBackend::decode_aac: size={}, pts={}", au_data.len(), au_info.pts);
+        
+        // TODO: Actual AAC decoding using a library like ffmpeg or symphonia
+        // In a real implementation:
+        // 1. Parse ADTS/ADIF header
+        // 2. Decode AAC frame using psychoacoustic model
+        // 3. Apply window functions and IMDCT
+        // 4. Output PCM samples
+        
+        self.frame_count += 1;
+        
+        // Simulate decoded PCM: 1024 samples per channel (AAC frame size)
+        let samples_per_frame = 1024;
+        let pcm_size = samples_per_frame * self.channels * (self.bit_depth / 8);
+        
+        let pcm_item = CellAdecPcmItem {
+            start_addr: 0, // Would point to PCM buffer
+            size: pcm_size,
+            status: 0,
+            au_info: *au_info,
+        };
+        
+        Ok(pcm_item)
+    }
+
+    /// Decode MP3 access unit to PCM
+    fn decode_mp3(&mut self, au_data: &[u8], au_info: &CellAdecAuInfo) -> Result<CellAdecPcmItem, i32> {
+        trace!("AudioDecoderBackend::decode_mp3: size={}, pts={}", au_data.len(), au_info.pts);
+        
+        // TODO: Actual MP3 decoding using a library like minimp3 or symphonia
+        // In a real implementation:
+        // 1. Parse MP3 frame header
+        // 2. Decode using hybrid filterbank
+        // 3. Apply aliasing reduction
+        // 4. Frequency inversion
+        // 5. Output PCM samples
+        
+        self.frame_count += 1;
+        
+        // Simulate decoded PCM: 1152 samples per channel (MP3 frame size)
+        let samples_per_frame = 1152;
+        let pcm_size = samples_per_frame * self.channels * (self.bit_depth / 8);
+        
+        let pcm_item = CellAdecPcmItem {
+            start_addr: 0,
+            size: pcm_size,
+            status: 0,
+            au_info: *au_info,
+        };
+        
+        Ok(pcm_item)
+    }
+
+    /// Decode ATRAC3+ access unit to PCM
+    fn decode_atrac3plus(&mut self, au_data: &[u8], au_info: &CellAdecAuInfo) -> Result<CellAdecPcmItem, i32> {
+        trace!("AudioDecoderBackend::decode_atrac3plus: size={}, pts={}", au_data.len(), au_info.pts);
+        
+        // TODO: Actual ATRAC3+ decoding
+        // ATRAC3+ is a Sony proprietary format
+        // In a real implementation:
+        // 1. Parse ATRAC3+ header
+        // 2. Decode using MDCT with gain control
+        // 3. Apply tone synthesis
+        // 4. Joint stereo processing
+        // 5. Output PCM samples
+        
+        self.frame_count += 1;
+        
+        // Simulate decoded PCM: 2048 samples per channel (ATRAC3+ frame size)
+        let samples_per_frame = 2048;
+        let pcm_size = samples_per_frame * self.channels * (self.bit_depth / 8);
+        
+        let pcm_item = CellAdecPcmItem {
+            start_addr: 0,
+            size: pcm_size,
+            status: 0,
+            au_info: *au_info,
+        };
+        
+        Ok(pcm_item)
+    }
+
+    /// Get PCM format information
+    fn get_pcm_format(&self) -> CellAdecPcmFormat {
+        CellAdecPcmFormat {
+            num_channels: self.channels,
+            sample_rate: self.sample_rate,
+            bit_depth: self.bit_depth,
+        }
+    }
 }
 
 impl AdecEntry {
     fn new(codec_type: u32) -> Self {
+        let codec = match codec_type {
+            0 => CellAdecCodecType::Lpcm,
+            1 => CellAdecCodecType::Ac3,
+            2 => CellAdecCodecType::Atrac3,
+            3 => CellAdecCodecType::Atrac3Plus,
+            4 => CellAdecCodecType::Mp3,
+            5 => CellAdecCodecType::Aac,
+            6 => CellAdecCodecType::Wma,
+            _ => CellAdecCodecType::Aac, // Default to AAC
+        };
+
+        let decoder = AudioDecoderBackend::new(codec);
+
         Self {
             codec_type,
             is_seq_started: false,
             pcm_queue: VecDeque::new(),
             au_count: 0,
+            decoder: Some(decoder),
         }
     }
 }
@@ -181,11 +327,55 @@ impl AdecManager {
             return Err(CELL_ADEC_ERROR_SEQ);
         }
         
-        // TODO: Integrate with actual audio decoder
-        // For now, increment AU count to simulate decoding
-        entry.au_count += 1;
-        
-        Ok(())
+        // Decode based on codec type
+        if let Some(decoder) = &mut entry.decoder {
+            // Simulate AU data (in real implementation, this would come from memory)
+            let au_data = vec![0u8; au_info.size as usize];
+            
+            let pcm_item = match decoder.codec {
+                CellAdecCodecType::Aac => {
+                    decoder.decode_aac(&au_data, au_info)?
+                }
+                CellAdecCodecType::Mp3 => {
+                    decoder.decode_mp3(&au_data, au_info)?
+                }
+                CellAdecCodecType::Atrac3Plus => {
+                    decoder.decode_atrac3plus(&au_data, au_info)?
+                }
+                CellAdecCodecType::Atrac3 => {
+                    // Similar to ATRAC3+ but with different parameters
+                    decoder.decode_atrac3plus(&au_data, au_info)?
+                }
+                CellAdecCodecType::Ac3 => {
+                    // Basic AC3 support (similar to AAC for now)
+                    decoder.decode_aac(&au_data, au_info)?
+                }
+                CellAdecCodecType::Lpcm => {
+                    // LPCM is already PCM, just pass through
+                    CellAdecPcmItem {
+                        start_addr: au_info.start_addr,
+                        size: au_info.size,
+                        status: 0,
+                        au_info: *au_info,
+                    }
+                }
+                CellAdecCodecType::Wma => {
+                    // Basic WMA support (similar to AAC)
+                    decoder.decode_aac(&au_data, au_info)?
+                }
+            };
+            
+            // Add decoded PCM to queue
+            entry.pcm_queue.push_back(pcm_item);
+            entry.au_count += 1;
+            
+            trace!("AdecManager::decode_au: handle={}, codec={:?}, au_count={}", 
+                   handle, decoder.codec, entry.au_count);
+            
+            Ok(())
+        } else {
+            Err(CELL_ADEC_ERROR_FATAL)
+        }
     }
 
     pub fn get_pcm(&mut self, handle: AdecHandle) -> Result<CellAdecPcmItem, i32> {

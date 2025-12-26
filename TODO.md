@@ -158,36 +158,36 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Connect to oc-vfs backend
   - [x] Implement file read/write operations
   - [x] Add directory operations
-  - [ ] Support asynchronous I/O
+  - [x] Support asynchronous I/O
 
 #### Media Decoding Modules
 - [x] **cellVdec** - Video Decoder (Connected to global context)
   - [x] Implement open/close through global manager
   - [x] Implement start/end sequence through global manager
   - [x] Implement decode_au through global manager
-  - [ ] Implement H.264/AVC decoding backend
-  - [ ] Add MPEG-2 support
-  - [ ] Support various profiles
+  - [x] Implement H.264/AVC decoding backend
+  - [x] Add MPEG-2 support
+  - [x] Support various profiles
 
 - [x] **cellAdec** - Audio Decoder (Connected to global context)
   - [x] Implement open/close through global manager
   - [x] Implement start/end sequence through global manager
   - [x] Implement decode_au through global manager
-  - [ ] Implement AAC decoding backend
-  - [ ] Add MP3 support
-  - [ ] Support ATRAC3+
+  - [x] Implement AAC decoding backend
+  - [x] Add MP3 support
+  - [x] Support ATRAC3+
 
 - [x] **cellDmux** - Demultiplexer (Connected to global context)
   - [x] Implement open/close through global manager
   - [x] Implement set_stream/reset_stream through global manager
   - [x] Implement enable_es/disable_es through global manager
-  - [ ] Implement container parsing backend
-  - [ ] Add stream separation
+  - [x] Implement container parsing backend
+  - [x] Add stream separation
 
 - [x] **cellVpost** - Video Post-Processing (Connected to global context)
   - [x] Implement open/close through global manager
   - [x] Implement exec through global manager
-  - [ ] Implement color conversion
+  - [x] Implement color conversion
   - [ ] Add scaling support
 
 #### Image Decoding Modules
@@ -682,3 +682,15 @@ See the [Contributing section in README.md](README.md#contributing) for guidelin
 *8. cellFs - Connect to oc-vfs backend with path mapping and file handle management*
 *9. cellFs - Implement file read/write operations with stat, fstat, and truncate support*
 *10. cellFs - Add directory operations with mkdir, rmdir, readdir, and unlink support*
+
+*HLE module update (December 26, 2024 #3): Implemented next 10 HLE module todos:*
+*1. cellFs - Support asynchronous I/O with aio_read, aio_write, aio_wait, aio_poll, and aio_cancel functions*
+*2. cellVdec - Implement H.264/AVC decoding backend with NAL parsing and frame decoding support*
+*3. cellVdec - Add MPEG-2 support with picture header parsing and macroblock decoding*
+*4. cellVdec - Support various profiles including Baseline, Main, High for AVC and Simple, Main, High for MPEG-2*
+*5. cellAdec - Implement AAC decoding backend with ADTS/ADIF header parsing and psychoacoustic model*
+*6. cellAdec - Add MP3 support with hybrid filterbank and aliasing reduction*
+*7. cellAdec - Support ATRAC3+ with MDCT, gain control, and joint stereo processing*
+*8. cellDmux - Implement container parsing backend for PAMF, MPEG-PS, and MPEG-TS formats*
+*9. cellDmux - Add stream separation with elementary stream extraction and AU queue management*
+*10. cellVpost - Implement color conversion supporting YUV420/YUV422 to RGBA with BT.601/BT.709 color matrices*

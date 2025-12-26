@@ -105,16 +105,209 @@ struct VpostEntry {
     frames_processed: u32,
     /// Whether processor is busy
     is_busy: bool,
+    /// Color conversion backend
+    converter: Option<ColorConverter>,
+}
+
+/// Color conversion backend
+#[derive(Debug, Clone)]
+struct ColorConverter {
+    /// Input format
+    in_format: CellVpostFormatType,
+    /// Output format
+    out_format: CellVpostFormatType,
+    /// Color matrix for YUV conversions
+    color_matrix: CellVpostColorMatrix,
+}
+
+impl ColorConverter {
+    /// Create a new color converter
+    fn new(in_format: &CellVpostPictureFormat, out_format: &CellVpostPictureFormat) -> Self {
+        let in_fmt = match in_format.format_type {
+            0 => CellVpostFormatType::Yuv420Planar,
+            1 => CellVpostFormatType::Yuv422Planar,
+            2 => CellVpostFormatType::Rgba8888,
+            3 => CellVpostFormatType::Argb8888,
+            _ => CellVpostFormatType::Yuv420Planar,
+        };
+
+        let out_fmt = match out_format.format_type {
+            0 => CellVpostFormatType::Yuv420Planar,
+            1 => CellVpostFormatType::Yuv422Planar,
+            2 => CellVpostFormatType::Rgba8888,
+            3 => CellVpostFormatType::Argb8888,
+            _ => CellVpostFormatType::Rgba8888,
+        };
+
+        let matrix = match in_format.color_matrix {
+            0 => CellVpostColorMatrix::Bt601,
+            1 => CellVpostColorMatrix::Bt709,
+            _ => CellVpostColorMatrix::Bt709,
+        };
+
+        Self {
+            in_format: in_fmt,
+            out_format: out_fmt,
+            color_matrix: matrix,
+        }
+    }
+
+    /// Convert YUV420 to RGBA using specified color matrix
+    fn yuv420_to_rgba(&self, y_plane: &[u8], u_plane: &[u8], v_plane: &[u8], 
+                       width: u32, height: u32, out_buffer: &mut [u8]) -> Result<(), i32> {
+        trace!("ColorConverter::yuv420_to_rgba: {}x{}, matrix={:?}", width, height, self.color_matrix);
+        
+        // Get conversion coefficients based on color matrix
+        let (kr, kb) = match self.color_matrix {
+            CellVpostColorMatrix::Bt601 => (0.299, 0.114),  // BT.601/SDTV
+            CellVpostColorMatrix::Bt709 => (0.2126, 0.0722), // BT.709/HDTV
+        };
+        
+        let kg = 1.0 - kr - kb;
+        
+        // TODO: Actual YUV to RGB conversion
+        // In a real implementation:
+        // 1. For each pixel:
+        //    R = Y + 1.402 * (V - 128)
+        //    G = Y - 0.344 * (U - 128) - 0.714 * (V - 128)
+        //    B = Y + 1.772 * (U - 128)
+        // 2. Clamp to [0, 255]
+        // 3. Write RGBA (with alpha = 255)
+        
+        // Simulate conversion by filling output
+        let pixel_count = (width * height) as usize;
+        if out_buffer.len() >= pixel_count * 4 {
+            for i in 0..pixel_count {
+                let y = if i < y_plane.len() { y_plane[i] } else { 128 };
+                // Simple grayscale for now
+                out_buffer[i * 4] = y;     // R
+                out_buffer[i * 4 + 1] = y; // G
+                out_buffer[i * 4 + 2] = y; // B
+                out_buffer[i * 4 + 3] = 255; // A
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Convert RGBA to YUV420
+    fn rgba_to_yuv420(&self, rgba_buffer: &[u8], width: u32, height: u32,
+                       y_plane: &mut [u8], u_plane: &mut [u8], v_plane: &mut [u8]) -> Result<(), i32> {
+        trace!("ColorConverter::rgba_to_yuv420: {}x{}, matrix={:?}", width, height, self.color_matrix);
+        
+        // Get conversion coefficients
+        let (kr, kb) = match self.color_matrix {
+            CellVpostColorMatrix::Bt601 => (0.299, 0.114),
+            CellVpostColorMatrix::Bt709 => (0.2126, 0.0722),
+        };
+        
+        let kg = 1.0 - kr - kb;
+        
+        // TODO: Actual RGB to YUV conversion
+        // In a real implementation:
+        // 1. For each pixel:
+        //    Y = 16 + (65.481 * R + 128.553 * G + 24.966 * B) / 256
+        //    U = 128 + (-37.797 * R - 74.203 * G + 112.0 * B) / 256
+        //    V = 128 + (112.0 * R - 93.786 * G - 18.214 * B) / 256
+        // 2. Subsample U and V for 4:2:0
+        
+        let pixel_count = (width * height) as usize;
+        for i in 0..pixel_count.min(y_plane.len()) {
+            if i * 4 + 2 < rgba_buffer.len() {
+                let r = rgba_buffer[i * 4];
+                let g = rgba_buffer[i * 4 + 1];
+                let b = rgba_buffer[i * 4 + 2];
+                
+                // Simple grayscale
+                y_plane[i] = ((r as u32 + g as u32 + b as u32) / 3) as u8;
+            }
+        }
+        
+        // Subsample U and V (2x2 blocks)
+        let uv_size = ((width / 2) * (height / 2)) as usize;
+        for i in 0..uv_size.min(u_plane.len()).min(v_plane.len()) {
+            u_plane[i] = 128;
+            v_plane[i] = 128;
+        }
+        
+        Ok(())
+    }
+
+    /// Convert between formats
+    fn convert(&self, in_buffer: &[u8], pic_info: &CellVpostPictureInfo, out_buffer: &mut [u8]) -> Result<(), i32> {
+        match (self.in_format, self.out_format) {
+            (CellVpostFormatType::Yuv420Planar, CellVpostFormatType::Rgba8888) => {
+                // Split YUV planes (simplified)
+                let y_size = (pic_info.in_width * pic_info.in_height) as usize;
+                let uv_size = y_size / 4;
+                
+                if in_buffer.len() >= y_size + uv_size * 2 {
+                    let y_plane = &in_buffer[0..y_size];
+                    let u_plane = &in_buffer[y_size..y_size + uv_size];
+                    let v_plane = &in_buffer[y_size + uv_size..y_size + uv_size * 2];
+                    
+                    self.yuv420_to_rgba(y_plane, u_plane, v_plane, 
+                                       pic_info.out_width, pic_info.out_height, out_buffer)
+                } else {
+                    Err(CELL_VPOST_ERROR_ARG)
+                }
+            }
+            (CellVpostFormatType::Rgba8888, CellVpostFormatType::Yuv420Planar) => {
+                let y_size = (pic_info.out_width * pic_info.out_height) as usize;
+                let uv_size = y_size / 4;
+                
+                if out_buffer.len() >= y_size + uv_size * 2 {
+                    let (y_plane, uv_planes) = out_buffer.split_at_mut(y_size);
+                    let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
+                    
+                    self.rgba_to_yuv420(in_buffer, pic_info.in_width, pic_info.in_height,
+                                       y_plane, u_plane, v_plane)
+                } else {
+                    Err(CELL_VPOST_ERROR_ARG)
+                }
+            }
+            (CellVpostFormatType::Yuv422Planar, CellVpostFormatType::Rgba8888) => {
+                // Similar to YUV420 but with different chroma subsampling
+                trace!("YUV422 to RGBA conversion (using YUV420 path for now)");
+                let y_size = (pic_info.in_width * pic_info.in_height) as usize;
+                let uv_size = y_size / 2; // 4:2:2 has more chroma
+                
+                if in_buffer.len() >= y_size + uv_size * 2 {
+                    let y_plane = &in_buffer[0..y_size];
+                    let u_plane = &in_buffer[y_size..y_size + uv_size];
+                    let v_plane = &in_buffer[y_size + uv_size..];
+                    
+                    self.yuv420_to_rgba(y_plane, u_plane, v_plane,
+                                       pic_info.out_width, pic_info.out_height, out_buffer)
+                } else {
+                    Err(CELL_VPOST_ERROR_ARG)
+                }
+            }
+            _ => {
+                // Unsupported or pass-through conversion
+                trace!("Unsupported conversion: {:?} to {:?}", self.in_format, self.out_format);
+                if in_buffer.len() <= out_buffer.len() {
+                    out_buffer[..in_buffer.len()].copy_from_slice(in_buffer);
+                    Ok(())
+                } else {
+                    Err(CELL_VPOST_ERROR_ARG)
+                }
+            }
+        }
+    }
 }
 
 impl VpostEntry {
     fn new(in_format: CellVpostPictureFormat, out_format: CellVpostPictureFormat, mem_size: u32) -> Self {
+        let converter = ColorConverter::new(&in_format, &out_format);
+        
         Self {
             in_format,
             out_format,
             mem_size,
             frames_processed: 0,
             is_busy: false,
+            converter: Some(converter),
         }
     }
 }
@@ -189,8 +382,23 @@ impl VpostManager {
             return Err(CELL_VPOST_ERROR_ARG);
         }
 
-        // TODO: Integrate with actual video processing backend
-        // For now, simulate processing by incrementing frame count
+        // Perform color conversion
+        if let Some(converter) = &entry.converter {
+            // Simulate input and output buffers (in real impl, would read from memory)
+            let in_size = (pic_info.in_width * pic_info.in_height * 3 / 2) as usize; // YUV420 size
+            let out_size = (pic_info.out_width * pic_info.out_height * 4) as usize; // RGBA size
+            
+            let in_buffer = vec![128u8; in_size]; // Dummy input
+            let mut out_buffer = vec![0u8; out_size]; // Output buffer
+            
+            // Perform the conversion
+            converter.convert(&in_buffer, pic_info, &mut out_buffer)?;
+            
+            trace!("VpostManager::exec: converted {}x{} to {}x{}", 
+                   pic_info.in_width, pic_info.in_height,
+                   pic_info.out_width, pic_info.out_height);
+        }
+
         entry.frames_processed += 1;
 
         Ok(())

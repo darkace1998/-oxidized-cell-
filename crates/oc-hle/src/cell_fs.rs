@@ -126,6 +126,42 @@ struct FileHandle {
     size: u64,
 }
 
+/// Async I/O request ID type
+pub type AioRequestId = u64;
+
+/// Async I/O operation type
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AioOpType {
+    Read = 0,
+    Write = 1,
+}
+
+/// Async I/O request
+#[derive(Debug, Clone)]
+pub struct AioRequest {
+    /// Request ID
+    pub id: AioRequestId,
+    /// File descriptor
+    pub fd: CellFsFd,
+    /// Operation type
+    pub op_type: AioOpType,
+    /// Buffer address
+    pub buffer_addr: u32,
+    /// Number of bytes
+    pub size: u64,
+    /// File offset (for positioned I/O)
+    pub offset: Option<u64>,
+    /// Callback function address
+    pub callback: Option<u32>,
+    /// User data
+    pub user_data: u64,
+    /// Completion status
+    pub completed: bool,
+    /// Result (bytes transferred or error code)
+    pub result: Result<u64, i32>,
+}
+
 /// File system manager
 pub struct FsManager {
     /// Next file descriptor
@@ -134,6 +170,10 @@ pub struct FsManager {
     handles: HashMap<i32, FileHandle>,
     /// OC-VFS backend placeholder
     vfs_backend: Option<()>,
+    /// Async I/O requests
+    aio_requests: HashMap<AioRequestId, AioRequest>,
+    /// Next AIO request ID
+    next_aio_id: AioRequestId,
 }
 
 impl FsManager {
@@ -143,6 +183,8 @@ impl FsManager {
             next_fd: 3, // Start after stdin/stdout/stderr
             handles: HashMap::new(),
             vfs_backend: None,
+            aio_requests: HashMap::new(),
+            next_aio_id: 1,
         }
     }
 
@@ -475,6 +517,192 @@ impl FsManager {
         // 3. Handle errors (not found, permission denied, etc.)
 
         0 // CELL_OK
+    }
+
+    // ========================================================================
+    // Asynchronous I/O Support
+    // ========================================================================
+
+    /// Submit an asynchronous read request
+    /// 
+    /// # Arguments
+    /// * `fd` - File descriptor
+    /// * `buffer_addr` - Address of buffer to read into
+    /// * `size` - Number of bytes to read
+    /// * `offset` - Optional file offset (None for current position)
+    /// * `callback` - Optional callback function address
+    /// * `user_data` - User data to pass to callback
+    /// 
+    /// # Returns
+    /// * Request ID on success, error code on failure
+    pub fn aio_read(&mut self, fd: CellFsFd, buffer_addr: u32, size: u64, 
+                     offset: Option<u64>, callback: Option<u32>, user_data: u64) -> Result<AioRequestId, i32> {
+        // Validate file descriptor
+        if !self.handles.contains_key(&fd) {
+            return Err(0x80010009u32 as i32); // CELL_FS_ERROR_EBADF
+        }
+
+        let request_id = self.next_aio_id;
+        self.next_aio_id += 1;
+
+        let request = AioRequest {
+            id: request_id,
+            fd,
+            op_type: AioOpType::Read,
+            buffer_addr,
+            size,
+            offset,
+            callback,
+            user_data,
+            completed: false,
+            result: Ok(0),
+        };
+
+        debug!("FsManager::aio_read: fd={}, size={}, offset={:?}, request_id={}", 
+               fd, size, offset, request_id);
+
+        self.aio_requests.insert(request_id, request);
+
+        // TODO: Queue actual async I/O operation
+        // In real implementation:
+        // 1. Submit I/O to background thread pool
+        // 2. Track completion status
+        // 3. Invoke callback when complete
+
+        Ok(request_id)
+    }
+
+    /// Submit an asynchronous write request
+    /// 
+    /// # Arguments
+    /// * `fd` - File descriptor
+    /// * `buffer_addr` - Address of buffer to write from
+    /// * `size` - Number of bytes to write
+    /// * `offset` - Optional file offset (None for current position)
+    /// * `callback` - Optional callback function address
+    /// * `user_data` - User data to pass to callback
+    /// 
+    /// # Returns
+    /// * Request ID on success, error code on failure
+    pub fn aio_write(&mut self, fd: CellFsFd, buffer_addr: u32, size: u64,
+                      offset: Option<u64>, callback: Option<u32>, user_data: u64) -> Result<AioRequestId, i32> {
+        // Validate file descriptor
+        if !self.handles.contains_key(&fd) {
+            return Err(0x80010009u32 as i32); // CELL_FS_ERROR_EBADF
+        }
+
+        let request_id = self.next_aio_id;
+        self.next_aio_id += 1;
+
+        let request = AioRequest {
+            id: request_id,
+            fd,
+            op_type: AioOpType::Write,
+            buffer_addr,
+            size,
+            offset,
+            callback,
+            user_data,
+            completed: false,
+            result: Ok(0),
+        };
+
+        debug!("FsManager::aio_write: fd={}, size={}, offset={:?}, request_id={}", 
+               fd, size, offset, request_id);
+
+        self.aio_requests.insert(request_id, request);
+
+        // TODO: Queue actual async I/O operation
+
+        Ok(request_id)
+    }
+
+    /// Wait for an asynchronous I/O request to complete
+    /// 
+    /// # Arguments
+    /// * `request_id` - Request ID to wait for
+    /// * `timeout_us` - Timeout in microseconds (0 for no timeout)
+    /// 
+    /// # Returns
+    /// * 0 on success, error code on failure
+    pub fn aio_wait(&mut self, request_id: AioRequestId, _timeout_us: u64) -> i32 {
+        let request = match self.aio_requests.get(&request_id) {
+            Some(req) => req,
+            None => return 0x80010002u32 as i32, // CELL_FS_ERROR_EINVAL
+        };
+
+        trace!("FsManager::aio_wait: request_id={}, completed={}", request_id, request.completed);
+
+        // TODO: Actually wait for request completion
+        // For now, mark as completed immediately
+        if let Some(req) = self.aio_requests.get_mut(&request_id) {
+            if !req.completed {
+                req.completed = true;
+                // Simulate successful read/write
+                req.result = Ok(req.size);
+            }
+        }
+
+        0 // CELL_OK
+    }
+
+    /// Poll an asynchronous I/O request status
+    /// 
+    /// # Arguments
+    /// * `request_id` - Request ID to check
+    /// 
+    /// # Returns
+    /// * true if completed, false if still in progress
+    pub fn aio_poll(&self, request_id: AioRequestId) -> Result<bool, i32> {
+        let request = self.aio_requests.get(&request_id)
+            .ok_or(0x80010002u32 as i32)?; // CELL_FS_ERROR_EINVAL
+
+        Ok(request.completed)
+    }
+
+    /// Cancel an asynchronous I/O request
+    /// 
+    /// # Arguments
+    /// * `request_id` - Request ID to cancel
+    /// 
+    /// # Returns
+    /// * 0 on success, error code on failure
+    pub fn aio_cancel(&mut self, request_id: AioRequestId) -> i32 {
+        if let Some(mut request) = self.aio_requests.remove(&request_id) {
+            debug!("FsManager::aio_cancel: request_id={}", request_id);
+            
+            if !request.completed {
+                request.completed = true;
+                request.result = Err(0x80010045u32 as i32); // CELL_FS_ERROR_ECANCELED
+            }
+            
+            0 // CELL_OK
+        } else {
+            0x80010002u32 as i32 // CELL_FS_ERROR_EINVAL
+        }
+    }
+
+    /// Get the result of a completed asynchronous I/O request
+    /// 
+    /// # Arguments
+    /// * `request_id` - Request ID to get result for
+    /// 
+    /// # Returns
+    /// * Number of bytes transferred on success, error code on failure
+    pub fn aio_get_result(&mut self, request_id: AioRequestId) -> Result<u64, i32> {
+        let request = self.aio_requests.get(&request_id)
+            .ok_or(0x80010002u32 as i32)?; // CELL_FS_ERROR_EINVAL
+
+        if !request.completed {
+            return Err(0x80610B03u32 as i32); // Request not yet complete
+        }
+
+        request.result
+    }
+
+    /// Get number of pending async I/O requests
+    pub fn aio_pending_count(&self) -> usize {
+        self.aio_requests.values().filter(|r| !r.completed).count()
     }
 }
 

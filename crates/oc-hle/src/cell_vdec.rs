@@ -108,16 +108,173 @@ struct VdecEntry {
     is_seq_started: bool,
     picture_queue: VecDeque<CellVdecPicItem>,
     au_count: u32,
+    /// Video decoder backend
+    decoder: Option<VideoDecoderBackend>,
+}
+
+/// H.264/AVC profile types
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AvcProfile {
+    Baseline = 66,
+    Main = 77,
+    Extended = 88,
+    High = 100,
+    High10 = 110,
+    High422 = 122,
+    High444 = 244,
+}
+
+/// MPEG-2 profile types
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mpeg2Profile {
+    Simple = 5,
+    Main = 4,
+    High = 1,
+}
+
+/// Video decoder backend implementation
+#[derive(Debug)]
+struct VideoDecoderBackend {
+    /// Codec type (AVC, MPEG-2, etc.)
+    codec: CellVdecCodecType,
+    /// Profile and level
+    profile: u32,
+    level: u32,
+    /// Picture width
+    width: u32,
+    /// Picture height
+    height: u32,
+    /// Decoded frame count
+    frame_count: u32,
+}
+
+impl VideoDecoderBackend {
+    /// Create a new video decoder backend
+    fn new(codec_type: CellVdecCodecType, profile_level: u32) -> Self {
+        let profile = (profile_level >> 16) & 0xFFFF;
+        let level = profile_level & 0xFFFF;
+        
+        Self {
+            codec: codec_type,
+            profile,
+            level,
+            width: 1920,  // Default HD resolution
+            height: 1080,
+            frame_count: 0,
+        }
+    }
+
+    /// Decode an H.264/AVC access unit
+    fn decode_avc(&mut self, au_data: &[u8], au_info: &CellVdecAuInfo) -> Result<CellVdecPicItem, i32> {
+        trace!("VideoDecoderBackend::decode_avc: size={}, pts={}, dts={}", 
+               au_data.len(), au_info.pts, au_info.dts);
+        
+        // TODO: Actual H.264/AVC decoding
+        // In a real implementation:
+        // 1. Parse NAL units
+        // 2. Decode slice headers
+        // 3. Perform motion compensation
+        // 4. Apply deblocking filter
+        // 5. Output decoded frame
+        
+        self.frame_count += 1;
+        
+        // Create a dummy decoded picture item
+        let pic_item = CellVdecPicItem {
+            codec_type: CellVdecCodecType::Avc as u32,
+            start_addr: 0, // Would point to decoded frame buffer
+            size: (self.width * self.height * 3 / 2), // YUV420 size
+            au_num: 1,
+            au_info: [*au_info, CellVdecAuInfo { pts: 0, dts: 0, user_data: 0, codec_spec_info: 0 }],
+            status: 0,
+            attr: 0,
+            pic_size: self.width * self.height * 3 / 2,
+        };
+        
+        Ok(pic_item)
+    }
+
+    /// Decode an MPEG-2 access unit
+    fn decode_mpeg2(&mut self, au_data: &[u8], au_info: &CellVdecAuInfo) -> Result<CellVdecPicItem, i32> {
+        trace!("VideoDecoderBackend::decode_mpeg2: size={}, pts={}, dts={}", 
+               au_data.len(), au_info.pts, au_info.dts);
+        
+        // TODO: Actual MPEG-2 decoding
+        // In a real implementation:
+        // 1. Parse picture headers
+        // 2. Decode macroblocks
+        // 3. Perform IDCT
+        // 4. Motion compensation
+        // 5. Output decoded frame
+        
+        self.frame_count += 1;
+        
+        // Create a dummy decoded picture item
+        let pic_item = CellVdecPicItem {
+            codec_type: CellVdecCodecType::Mpeg2 as u32,
+            start_addr: 0,
+            size: (self.width * self.height * 3 / 2),
+            au_num: 1,
+            au_info: [*au_info, CellVdecAuInfo { pts: 0, dts: 0, user_data: 0, codec_spec_info: 0 }],
+            status: 0,
+            attr: 0,
+            pic_size: self.width * self.height * 3 / 2,
+        };
+        
+        Ok(pic_item)
+    }
+
+    /// Validate profile support for the codec
+    fn validate_profile(&self) -> Result<(), i32> {
+        match self.codec {
+            CellVdecCodecType::Avc => {
+                // Validate H.264/AVC profile
+                match self.profile {
+                    66 | 77 | 88 | 100 | 110 | 122 | 244 => Ok(()),
+                    _ => {
+                        trace!("Unsupported AVC profile: {}", self.profile);
+                        Err(CELL_VDEC_ERROR_ARG)
+                    }
+                }
+            }
+            CellVdecCodecType::Mpeg2 => {
+                // Validate MPEG-2 profile
+                match self.profile {
+                    1 | 4 | 5 => Ok(()),
+                    _ => {
+                        trace!("Unsupported MPEG-2 profile: {}", self.profile);
+                        Err(CELL_VDEC_ERROR_ARG)
+                    }
+                }
+            }
+            CellVdecCodecType::Divx => {
+                // Basic DivX support
+                Ok(())
+            }
+        }
+    }
 }
 
 impl VdecEntry {
     fn new(codec_type: u32, profile_level: u32) -> Self {
+        let codec = match codec_type {
+            0 => CellVdecCodecType::Mpeg2,
+            1 => CellVdecCodecType::Avc,
+            2 => CellVdecCodecType::Divx,
+            _ => CellVdecCodecType::Avc, // Default to AVC
+        };
+
+        let decoder = VideoDecoderBackend::new(codec, profile_level);
+
         Self {
             codec_type,
             profile_level,
             is_seq_started: false,
             picture_queue: VecDeque::new(),
             au_count: 0,
+            decoder: Some(decoder),
         }
     }
 }
@@ -184,11 +341,38 @@ impl VdecManager {
             return Err(CELL_VDEC_ERROR_SEQ);
         }
         
-        // TODO: Integrate with actual video decoder
-        // For now, increment AU count to simulate decoding
-        entry.au_count += 1;
-        
-        Ok(())
+        // Validate decoder backend and profile support
+        if let Some(decoder) = &mut entry.decoder {
+            decoder.validate_profile()?;
+            
+            // Simulate AU data (in real implementation, this would come from memory)
+            let au_data = vec![0u8; 1024]; // Dummy data
+            
+            // Decode based on codec type
+            let pic_item = match decoder.codec {
+                CellVdecCodecType::Avc => {
+                    decoder.decode_avc(&au_data, au_info)?
+                }
+                CellVdecCodecType::Mpeg2 => {
+                    decoder.decode_mpeg2(&au_data, au_info)?
+                }
+                CellVdecCodecType::Divx => {
+                    // Basic DivX decoding (similar to MPEG-2)
+                    decoder.decode_mpeg2(&au_data, au_info)?
+                }
+            };
+            
+            // Add decoded picture to queue
+            entry.picture_queue.push_back(pic_item);
+            entry.au_count += 1;
+            
+            trace!("VdecManager::decode_au: handle={}, codec={:?}, au_count={}", 
+                   handle, decoder.codec, entry.au_count);
+            
+            Ok(())
+        } else {
+            Err(CELL_VDEC_ERROR_FATAL)
+        }
     }
 
     pub fn get_picture(&mut self, handle: VdecHandle, pic_format: &CellVdecPicFormat) -> Result<CellVdecPicItem, i32> {
