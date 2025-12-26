@@ -2,11 +2,31 @@
 
 use eframe::egui;
 use oc_core::config::*;
+use std::path::PathBuf;
+
+/// Firmware installation status
+#[derive(Debug, Clone, Default)]
+pub struct FirmwareStatus {
+    /// Whether firmware is installed
+    pub installed: bool,
+    /// Firmware version string
+    pub version: Option<String>,
+    /// Path to installed firmware
+    pub path: Option<PathBuf>,
+    /// Status message
+    pub message: Option<String>,
+    /// Whether an operation is in progress
+    pub in_progress: bool,
+}
 
 /// Settings panel
 pub struct SettingsPanel {
     /// Current tab
     current_tab: SettingsTab,
+    /// Firmware status
+    firmware_status: FirmwareStatus,
+    /// Selected firmware file path
+    firmware_file_path: String,
 }
 
 /// Settings tabs
@@ -18,6 +38,7 @@ enum SettingsTab {
     Audio,
     Input,
     Paths,
+    Firmware,
     Debug,
 }
 
@@ -26,7 +47,53 @@ impl SettingsPanel {
     pub fn new() -> Self {
         Self {
             current_tab: SettingsTab::General,
+            firmware_status: FirmwareStatus::default(),
+            firmware_file_path: String::new(),
         }
+    }
+
+    /// Check firmware status at the given path
+    pub fn check_firmware_status(&mut self, firmware_dir: &std::path::Path) {
+        // Check if dev_flash exists with version.txt
+        let version_file = firmware_dir.join("version.txt");
+        if version_file.exists() {
+            if let Ok(version) = std::fs::read_to_string(&version_file) {
+                self.firmware_status = FirmwareStatus {
+                    installed: true,
+                    version: Some(version.trim().to_string()),
+                    path: Some(firmware_dir.to_path_buf()),
+                    message: Some("Firmware installed".to_string()),
+                    in_progress: false,
+                };
+                return;
+            }
+        }
+
+        // Check for PS3UPDAT.PUP file
+        let pup_file = firmware_dir.join("PS3UPDAT.PUP");
+        if pup_file.exists() {
+            self.firmware_status = FirmwareStatus {
+                installed: false,
+                version: None,
+                path: Some(pup_file),
+                message: Some("Firmware file found, needs installation".to_string()),
+                in_progress: false,
+            };
+            return;
+        }
+
+        self.firmware_status = FirmwareStatus {
+            installed: false,
+            version: None,
+            path: None,
+            message: Some("No firmware found".to_string()),
+            in_progress: false,
+        };
+    }
+
+    /// Switch to the firmware tab
+    pub fn set_tab_firmware(&mut self) {
+        self.current_tab = SettingsTab::Firmware;
     }
 
     /// Show the settings panel
@@ -40,6 +107,7 @@ impl SettingsPanel {
             ui.selectable_value(&mut self.current_tab, SettingsTab::Audio, "Audio");
             ui.selectable_value(&mut self.current_tab, SettingsTab::Input, "Input");
             ui.selectable_value(&mut self.current_tab, SettingsTab::Paths, "Paths");
+            ui.selectable_value(&mut self.current_tab, SettingsTab::Firmware, "🔑 Firmware");
             ui.selectable_value(&mut self.current_tab, SettingsTab::Debug, "Debug");
         });
 
@@ -64,6 +132,9 @@ impl SettingsPanel {
                 }
                 SettingsTab::Paths => {
                     should_save |= self.show_path_settings(ui, &mut config.paths);
+                }
+                SettingsTab::Firmware => {
+                    should_save |= self.show_firmware_settings(ui, &mut config.paths);
                 }
                 SettingsTab::Debug => {
                     should_save |= self.show_debug_settings(ui, &mut config.debug);
@@ -321,8 +392,199 @@ impl SettingsPanel {
         changed |= self.show_path_field(ui, "dev_flash:", &mut config.dev_flash);
         changed |= self.show_path_field(ui, "Save Data:", &mut config.save_data);
         changed |= self.show_path_field(ui, "Shader Cache:", &mut config.shader_cache);
+        changed |= self.show_path_field(ui, "Firmware:", &mut config.firmware);
 
         changed
+    }
+
+    fn show_firmware_settings(&mut self, ui: &mut egui::Ui, config: &mut PathConfig) -> bool {
+        let mut changed = false;
+
+        ui.heading("🔑 PS3 Firmware Installation");
+        ui.add_space(10.0);
+
+        // Status section
+        ui.group(|ui| {
+            ui.heading("Status");
+            ui.add_space(5.0);
+
+            // Check firmware status
+            self.check_firmware_status(&config.firmware);
+
+            if self.firmware_status.installed {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("✅ Installed").color(egui::Color32::GREEN));
+                    if let Some(ref version) = self.firmware_status.version {
+                        ui.label(format!("Version: {}", version));
+                    }
+                });
+                if let Some(ref path) = self.firmware_status.path {
+                    ui.label(format!("Location: {}", path.display()));
+                }
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("❌ Not Installed").color(egui::Color32::RED));
+                });
+                if let Some(ref msg) = self.firmware_status.message {
+                    ui.label(msg);
+                }
+            }
+        });
+
+        ui.add_space(15.0);
+
+        // Installation section
+        ui.group(|ui| {
+            ui.heading("Install Firmware");
+            ui.add_space(5.0);
+
+            ui.label("PS3 games are encrypted and require the official PS3 firmware to decrypt them.");
+            ui.label("This is the same approach used by other PS3 emulators like RPCS3.");
+            ui.add_space(10.0);
+
+            // Firmware directory
+            ui.horizontal(|ui| {
+                ui.label("Firmware Directory:");
+                let mut path_str = config.firmware.to_string_lossy().to_string();
+                if ui.text_edit_singleline(&mut path_str).changed() {
+                    config.firmware = PathBuf::from(path_str);
+                    changed = true;
+                }
+                if ui.button("📁 Browse").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Select Firmware Directory")
+                        .pick_folder()
+                    {
+                        config.firmware = path;
+                        changed = true;
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+
+            // File selection
+            ui.horizontal(|ui| {
+                ui.label("PUP File:");
+                ui.text_edit_singleline(&mut self.firmware_file_path);
+                if ui.button("📁 Browse").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Select PS3UPDAT.PUP")
+                        .add_filter("PS3 Update Package", &["PUP", "pup"])
+                        .pick_file()
+                    {
+                        self.firmware_file_path = path.to_string_lossy().to_string();
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+
+            // Install button
+            let can_install = !self.firmware_file_path.is_empty() 
+                && std::path::Path::new(&self.firmware_file_path).exists();
+
+            ui.horizontal(|ui| {
+                if ui.add_enabled(can_install && !self.firmware_status.in_progress, 
+                    egui::Button::new("⬇️ Install Firmware")).clicked() 
+                {
+                    self.install_firmware(&config.firmware);
+                }
+
+                if self.firmware_status.in_progress {
+                    ui.spinner();
+                    ui.label("Installing...");
+                }
+            });
+
+            // Show installation result
+            if let Some(ref msg) = self.firmware_status.message {
+                if !self.firmware_status.in_progress {
+                    ui.add_space(5.0);
+                    if self.firmware_status.installed {
+                        ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+                    } else if msg.contains("Error") || msg.contains("Failed") {
+                        ui.label(egui::RichText::new(msg).color(egui::Color32::RED));
+                    } else {
+                        ui.label(msg);
+                    }
+                }
+            }
+        });
+
+        ui.add_space(15.0);
+
+        // Download instructions
+        ui.group(|ui| {
+            ui.heading("Download Firmware");
+            ui.add_space(5.0);
+
+            ui.label("You can download the PS3 System Software for free from Sony:");
+            ui.add_space(5.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Direct Link:");
+                if ui.link("Download PS3UPDAT.PUP").clicked() {
+                    let _ = open::that("http://dus01.ps3.update.playstation.net/update/ps3/image/us/2025_0305_c179ad173bbc08b55431d30947725a4b/PS3UPDAT.PUP");
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Official Page:");
+                if ui.link("PlayStation Support").clicked() {
+                    let _ = open::that("https://www.playstation.com/en-us/support/hardware/ps3/system-software/");
+                }
+            });
+
+            ui.add_space(5.0);
+            ui.label("Or run the download script: ./scripts/download-firmware.sh");
+        });
+
+        changed
+    }
+
+    fn install_firmware(&mut self, target_dir: &std::path::Path) {
+        use oc_loader::firmware::PupLoader;
+
+        self.firmware_status.in_progress = true;
+        self.firmware_status.message = Some("Installing firmware...".to_string());
+
+        // Read the PUP file
+        let pup_path = std::path::Path::new(&self.firmware_file_path);
+        match std::fs::read(pup_path) {
+            Ok(pup_data) => {
+                let mut loader = PupLoader::new();
+                match loader.install(&pup_data, target_dir) {
+                    Ok(version) => {
+                        self.firmware_status = FirmwareStatus {
+                            installed: true,
+                            version: Some(version.to_string()),
+                            path: Some(target_dir.to_path_buf()),
+                            message: Some(format!("✅ Firmware {} installed successfully!", version.to_string())),
+                            in_progress: false,
+                        };
+                    }
+                    Err(e) => {
+                        self.firmware_status = FirmwareStatus {
+                            installed: false,
+                            version: None,
+                            path: None,
+                            message: Some(format!("❌ Installation failed: {}", e)),
+                            in_progress: false,
+                        };
+                    }
+                }
+            }
+            Err(e) => {
+                self.firmware_status = FirmwareStatus {
+                    installed: false,
+                    version: None,
+                    path: None,
+                    message: Some(format!("❌ Failed to read firmware file: {}", e)),
+                    in_progress: false,
+                };
+            }
+        }
     }
 
     fn show_path_field(&self, ui: &mut egui::Ui, label: &str, path: &mut std::path::PathBuf) -> bool {

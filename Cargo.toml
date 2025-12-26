@@ -92,6 +92,12 @@ dirs = "5.0"
 # Testing
 criterion = "0.5"
 
+# Cryptography
+aes = "0.8"
+cbc = "0.1"
+sha1 = "0.10"
+flate2 = "1.0"
+
 # Internal crates
 oc-core = { path = "crates/oc-core" }
 oc-memory = { path = "crates/oc-memory" }

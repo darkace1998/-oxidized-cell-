@@ -427,6 +427,12 @@ impl eframe::App for OxidizedCellApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("🔑 Install Firmware...").clicked() {
+                        self.show_settings = true;
+                        self.settings_panel.set_tab_firmware();
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     ui.label("Theme:");
                     for theme in Theme::all() {
                         if ui.selectable_label(self.theme == *theme, theme.name()).clicked() {

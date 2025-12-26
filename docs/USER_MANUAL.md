@@ -192,10 +192,70 @@ Double-click a game to launch it.
 | Format | Extension | Description |
 |--------|-----------|-------------|
 | **ELF** | `.elf` | Executable and Linkable Format |
-| **SELF** | `.self` | Sony Encrypted ELF |
+| **SELF** | `.self` | Sony Encrypted ELF (requires firmware) |
 | **PRX** | `.prx` | PlayStation Relocatable Executable |
 | **ISO** | `.iso` | Disc image |
 | **PKG** | `.pkg` | PlayStation Package |
+
+### Installing PS3 Firmware
+
+Most PS3 games are encrypted and require the official PS3 firmware to decrypt them. This is the same approach used by other PS3 emulators like RPCS3.
+
+#### Downloading the Firmware
+
+**Option 1: Use the download script (easiest)**
+```bash
+# Linux/macOS
+./scripts/download-firmware.sh
+
+# Windows
+scripts\download-firmware.bat
+```
+
+**Option 2: Manual Download**
+
+Download directly from Sony's servers:
+```bash
+# Linux/macOS
+wget http://dus01.ps3.update.playstation.net/update/ps3/image/us/2025_0305_c179ad173bbc08b55431d30947725a4b/PS3UPDAT.PUP -O firmware/PS3UPDAT.PUP
+```
+
+On Windows (PowerShell):
+```powershell
+mkdir firmware
+Invoke-WebRequest -Uri "http://dus01.ps3.update.playstation.net/update/ps3/image/us/2025_0305_c179ad173bbc08b55431d30947725a4b/PS3UPDAT.PUP" -OutFile "firmware\PS3UPDAT.PUP"
+```
+
+Or visit the official PlayStation website: https://www.playstation.com/en-us/support/hardware/ps3/system-software/
+
+The file is approximately 200 MB.
+
+#### Installing the Firmware
+
+**Option 1: Automatic Installation**
+
+1. Create a `firmware` folder in the emulator directory
+2. Place the `PS3UPDAT.PUP` file in that folder
+3. The emulator will automatically extract the necessary keys on first run
+
+**Option 2: Via Settings Menu**
+
+1. Go to **Settings → Firmware**
+2. Click **Install Firmware**
+3. Select your `PS3UPDAT.PUP` file
+4. Wait for the installation to complete
+
+**Option 3: Command Line**
+
+```bash
+oxidized-cell --install-firmware /path/to/PS3UPDAT.PUP
+```
+
+#### After Installation
+
+Once firmware is installed, you can load encrypted games (SELF/EBOOT.BIN files) directly. The emulator will automatically decrypt them using the extracted keys.
+
+> ⚠️ **Note**: You must own the firmware legally. The PS3 System Software is free to download from Sony's official website.
 
 ### How to Load a Game
 

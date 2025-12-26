@@ -153,6 +153,7 @@ pub struct PathConfig {
     pub dev_flash: PathBuf,
     pub save_data: PathBuf,
     pub shader_cache: PathBuf,
+    pub firmware: PathBuf,
 }
 
 /// Debug settings
@@ -298,6 +299,7 @@ impl Default for PathConfig {
             dev_flash: base.join("dev_flash"),
             save_data: base.join("savedata"),
             shader_cache: base.join("cache/shaders"),
+            firmware: base.join("firmware"),
         }
     }
 }

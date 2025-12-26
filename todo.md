@@ -143,6 +143,13 @@ This document outlines the development roadmap for the Oxidized-Cell PS3 emulato
 - [x] Mouse input
 - [x] Pad (controller) input
 - [x] Input mapping system
+- [x] DualShock 3 with Sixaxis and vibration
+- [x] USB HID controller support
+- [x] Bluetooth controller pairing
+- [x] PlayStation Move controller
+- [x] Guitar/Drum/Turntable instruments
+- [x] PlayStation Eye camera
+- [x] Microphone input capture
 
 ### RSX Graphics (`oc-rsx`)
 - [x] RSX state management
@@ -279,18 +286,18 @@ This document outlines the development roadmap for the Oxidized-Cell PS3 emulato
 ### Phase 4: Input & Peripherals
 
 #### Controller Support
-- [ ] DualShock 3 full emulation
-- [ ] Sixaxis motion sensors
-- [ ] Vibration feedback
-- [ ] USB controller support
-- [ ] Bluetooth controller pairing
-- [ ] PlayStation Move support
-- [ ] Guitar/Drum controllers
+- [x] DualShock 3 full emulation
+- [x] Sixaxis motion sensors
+- [x] Vibration feedback
+- [x] USB controller support
+- [x] Bluetooth controller pairing
+- [x] PlayStation Move support
+- [x] Guitar/Drum controllers
 
 #### Other Peripherals
-- [ ] Camera support
-- [ ] Microphone input
-- [ ] USB devices
+- [x] Camera support
+- [x] Microphone input
+- [x] USB devices
 - [ ] Memory card (if applicable)
 
 ### Phase 5: Networking

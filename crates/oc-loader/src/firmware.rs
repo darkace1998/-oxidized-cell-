@@ -267,6 +267,82 @@ impl PupLoader {
 
         Ok(data[start..end].to_vec())
     }
+
+    /// Install firmware from a PUP file to a target directory
+    ///
+    /// This extracts the necessary files from the firmware update package
+    /// and installs them to the specified directory (usually dev_flash/).
+    pub fn install(
+        &mut self,
+        pup_data: &[u8],
+        target_dir: &std::path::Path,
+    ) -> Result<FirmwareVersion, LoaderError> {
+        use std::fs;
+        use std::io::Write;
+
+        info!("Installing firmware to: {}", target_dir.display());
+
+        // Parse the PUP file
+        self.parse(pup_data)?;
+
+        let version = self.version.clone()
+            .ok_or_else(|| LoaderError::InvalidPup("Could not determine firmware version".to_string()))?;
+
+        info!("Firmware version: {}", version.to_string());
+
+        // Create target directory structure
+        let dirs = [
+            "vsh/module",
+            "sys/external",
+            "sys/internal",
+        ];
+
+        for dir in &dirs {
+            let dir_path = target_dir.join(dir);
+            fs::create_dir_all(&dir_path).map_err(|e| {
+                LoaderError::InvalidPup(format!("Failed to create directory {}: {}", dir, e))
+            })?;
+        }
+
+        // Extract important entries
+        for entry in &self.entries {
+            let extracted = self.extract(pup_data, entry)?;
+            
+            // Determine target path based on entry type
+            let target_path = match entry.id {
+                PupEntryId::Lv2Kernel => Some(target_dir.join("vsh/module/lv2_kernel.self")),
+                PupEntryId::Vsh => Some(target_dir.join("vsh/module/vsh.self")),
+                _ => None,
+            };
+
+            if let Some(path) = target_path {
+                debug!("Extracting {:?} to {}", entry.id, path.display());
+                
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).map_err(|e| {
+                        LoaderError::InvalidPup(format!("Failed to create parent dir: {}", e))
+                    })?;
+                }
+
+                let mut file = fs::File::create(&path).map_err(|e| {
+                    LoaderError::InvalidPup(format!("Failed to create file {}: {}", path.display(), e))
+                })?;
+
+                file.write_all(&extracted).map_err(|e| {
+                    LoaderError::InvalidPup(format!("Failed to write file {}: {}", path.display(), e))
+                })?;
+            }
+        }
+
+        // Write version info
+        let version_file = target_dir.join("version.txt");
+        fs::write(&version_file, version.to_string()).map_err(|e| {
+            LoaderError::InvalidPup(format!("Failed to write version file: {}", e))
+        })?;
+
+        info!("Firmware {} installed successfully", version.to_string());
+        Ok(version)
+    }
 }
 
 impl Default for PupLoader {

@@ -125,9 +125,42 @@ cargo build --release
 # Run the emulator (UI mode)
 cargo run --release
 
-# Run with a specific game (future)
+# Run with a specific game
 cargo run --release -- /path/to/game.elf
 ```
+
+### Installing PS3 Firmware
+
+Most PS3 games are encrypted and require the official PS3 firmware to decrypt them. This is the same approach used by other PS3 emulators like RPCS3.
+
+**Option 1: Use the download script (recommended)**
+```bash
+# Linux/macOS
+./scripts/download-firmware.sh
+
+# Windows
+scripts\download-firmware.bat
+```
+
+**Option 2: Manual download**
+1. Download the firmware directly from Sony's servers:
+   ```bash
+   # Linux/macOS
+   wget http://dus01.ps3.update.playstation.net/update/ps3/image/us/2025_0305_c179ad173bbc08b55431d30947725a4b/PS3UPDAT.PUP -O firmware/PS3UPDAT.PUP
+   
+   # Windows (PowerShell)
+   Invoke-WebRequest -Uri "http://dus01.ps3.update.playstation.net/update/ps3/image/us/2025_0305_c179ad173bbc08b55431d30947725a4b/PS3UPDAT.PUP" -OutFile "firmware\PS3UPDAT.PUP"
+   ```
+   Or visit: https://www.playstation.com/en-us/support/hardware/ps3/system-software/
+
+2. Place `PS3UPDAT.PUP` in the `firmware/` folder, or install via command line:
+   ```bash
+   cargo run --release -- --install-firmware /path/to/PS3UPDAT.PUP
+   ```
+
+3. Once installed, the emulator can decrypt and run commercial PS3 games.
+
+> ℹ️ **Note**: The PS3 System Software is free and legal to download from Sony's servers.
 
 ### Configuration
 

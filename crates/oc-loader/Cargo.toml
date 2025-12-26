@@ -11,5 +11,9 @@ oc-core.workspace = true
 oc-memory.workspace = true
 tracing.workspace = true
 bytemuck.workspace = true
+aes.workspace = true
+cbc.workspace = true
+sha1.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]

@@ -81,6 +81,35 @@ impl SelfLoader {
         }
     }
 
+    /// Create a new SELF loader with firmware keys loaded
+    pub fn with_firmware(firmware_path: &str) -> Result<Self, LoaderError> {
+        let mut crypto = CryptoEngine::new();
+        crypto.load_firmware_keys(firmware_path)?;
+        Ok(Self { crypto })
+    }
+
+    /// Create a new SELF loader with a keys file
+    pub fn with_keys_file(keys_path: &str) -> Result<Self, LoaderError> {
+        let mut crypto = CryptoEngine::new();
+        crypto.load_keys_file(keys_path)?;
+        Ok(Self { crypto })
+    }
+
+    /// Get a reference to the crypto engine
+    pub fn crypto(&self) -> &CryptoEngine {
+        &self.crypto
+    }
+
+    /// Get a mutable reference to the crypto engine
+    pub fn crypto_mut(&mut self) -> &mut CryptoEngine {
+        &mut self.crypto
+    }
+
+    /// Check if decryption keys are available
+    pub fn has_keys(&self) -> bool {
+        self.crypto.has_firmware_keys()
+    }
+
     /// Check if data is a SELF file
     pub fn is_self(data: &[u8]) -> bool {
         data.len() >= 4 && data[0..4] == SELF_MAGIC

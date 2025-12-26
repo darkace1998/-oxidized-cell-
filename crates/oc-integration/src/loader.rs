@@ -11,9 +11,9 @@ use oc_loader::{ElfLoader, PrxLoader, SelfLoader};
 use oc_memory::MemoryManager;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, error};
 
 /// Default stack size for PPU threads (1 MB)
 const DEFAULT_STACK_SIZE: u32 = 0x0010_0000;
@@ -88,13 +88,19 @@ impl GameLoader {
     /// Load a game from a file path
     ///
     /// This will automatically detect whether the file is an ELF or SELF file
-    /// and handle it accordingly.
+    /// and handle it accordingly. It also supports loading from PS3 game
+    /// folder structures (looking for USRDIR/EBOOT.BIN).
     pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<LoadedGame> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
+        let path = path.as_ref();
+        let path_str = path.to_string_lossy().to_string();
         info!("Loading game: {}", path_str);
 
+        // Try to find the actual executable
+        let executable_path = self.find_executable(path)?;
+        info!("Found executable: {}", executable_path.display());
+
         // Read the file
-        let file = File::open(&path).map_err(|e| {
+        let file = File::open(&executable_path).map_err(|e| {
             EmulatorError::Loader(LoaderError::InvalidElf(format!(
                 "Failed to open file: {}",
                 e
@@ -107,23 +113,183 @@ impl GameLoader {
             EmulatorError::Loader(LoaderError::InvalidElf(format!("Failed to read file: {}", e)))
         })?;
 
-        // Check if it's a SELF file
+        // Check file magic to determine format
+        if data.len() < 4 {
+            return Err(EmulatorError::Loader(LoaderError::InvalidElf(
+                "File too small to be a valid executable".to_string()
+            )));
+        }
+
+        // Check if it's a SELF file (encrypted PS3 executable)
         let (elf_data, is_self) = if SelfLoader::is_self(&data) {
-            info!("Detected SELF file, attempting to decrypt/extract ELF");
-            let self_loader = SelfLoader::new();
+            info!("Detected SELF file (encrypted PS3 executable)");
+            
+            // Try to create a SELF loader with firmware keys
+            let self_loader = self.create_self_loader();
+            
             match self_loader.decrypt(&data) {
-                Ok(decrypted) => (decrypted, true),
+                Ok(decrypted) => {
+                    info!("Successfully decrypted SELF file");
+                    (decrypted, true)
+                }
                 Err(e) => {
-                    warn!("SELF decryption failed: {}. Trying as raw ELF.", e);
-                    (data, false)
+                    error!("SELF decryption failed: {}", e);
+                    
+                    // Provide helpful error message
+                    let has_keys = self_loader.has_keys();
+                    let help_msg = if has_keys {
+                        "Decryption keys are installed but decryption failed. \
+                         The file may require additional keys or be corrupted."
+                    } else {
+                        "No decryption keys found. To decrypt PS3 games, you need to:\n\
+                         1. Install PS3 firmware: Download the official firmware (PS3UPDAT.PUP) from \
+                            playstation.com and place it in the 'firmware/' folder\n\
+                         2. Or provide a keys.txt file with decryption keys\n\
+                         3. Or use already decrypted game files (EBOOT.ELF instead of EBOOT.BIN)"
+                    };
+                    
+                    return Err(EmulatorError::Loader(LoaderError::DecryptionFailed(
+                        format!(
+                            "This is an encrypted PS3 executable (SELF format).\n\
+                             Decryption error: {}\n\n\
+                             {}",
+                            e, help_msg
+                        )
+                    )));
                 }
             }
-        } else {
+        } else if data[0..4] == [0x7F, b'E', b'L', b'F'] {
+            info!("Detected plain ELF file");
             (data, false)
+        } else {
+            // Unknown format
+            let magic_hex: String = data[0..4.min(data.len())]
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            
+            return Err(EmulatorError::Loader(LoaderError::InvalidElf(
+                format!(
+                    "Unrecognized file format. Expected SELF (SCE\\0) or ELF (\\x7FELF).\n\
+                     File magic bytes: {}\n\n\
+                     Make sure you are loading a valid PS3 executable:\n\
+                     - EBOOT.BIN (usually in USRDIR folder)\n\
+                     - Decrypted ELF file\n\
+                     - PRX module",
+                    magic_hex
+                )
+            )));
         };
 
         // Load the ELF
-        self.load_elf(&elf_data, path_str, is_self)
+        self.load_elf(&elf_data, executable_path.to_string_lossy().to_string(), is_self)
+    }
+
+    /// Create a SELF loader with firmware keys if available
+    fn create_self_loader(&self) -> SelfLoader {
+        // Try common firmware/keys locations
+        let firmware_paths = [
+            "firmware/",
+            "dev_flash/",
+            "./PS3/dev_flash/",
+        ];
+
+        for path in &firmware_paths {
+            if Path::new(path).exists() {
+                if let Ok(loader) = SelfLoader::with_firmware(path) {
+                    info!("Loaded firmware keys from: {}", path);
+                    return loader;
+                }
+            }
+        }
+
+        // Try keys.txt files
+        let keys_files = [
+            "keys.txt",
+            "firmware/keys.txt",
+            "dev_flash/keys.txt",
+        ];
+
+        for path in &keys_files {
+            if Path::new(path).exists() {
+                if let Ok(loader) = SelfLoader::with_keys_file(path) {
+                    info!("Loaded keys from: {}", path);
+                    return loader;
+                }
+            }
+        }
+
+        // Return default loader (will fail on encrypted files)
+        warn!("No firmware keys found. Encrypted SELF files cannot be decrypted.");
+        SelfLoader::new()
+    }
+
+    /// Find the actual executable from a path
+    ///
+    /// Supports:
+    /// - Direct path to EBOOT.BIN or .elf file
+    /// - Path to PS3 game folder (will look for PS3_GAME/USRDIR/EBOOT.BIN)
+    /// - Path to USRDIR folder (will look for EBOOT.BIN inside)
+    fn find_executable(&self, path: &Path) -> Result<PathBuf> {
+        // If it's a file, use it directly
+        if path.is_file() {
+            return Ok(path.to_path_buf());
+        }
+
+        // If it's a directory, look for the executable
+        if path.is_dir() {
+            // Common PS3 game folder structures:
+            // 1. /PS3_GAME/USRDIR/EBOOT.BIN
+            // 2. /USRDIR/EBOOT.BIN
+            // 3. /EBOOT.BIN
+
+            let candidates = [
+                path.join("PS3_GAME/USRDIR/EBOOT.BIN"),
+                path.join("USRDIR/EBOOT.BIN"),
+                path.join("EBOOT.BIN"),
+                path.join("eboot.bin"),
+                path.join("PS3_GAME/USRDIR/eboot.bin"),
+                path.join("USRDIR/eboot.bin"),
+            ];
+
+            for candidate in &candidates {
+                if candidate.is_file() {
+                    info!("Found executable at: {}", candidate.display());
+                    return Ok(candidate.clone());
+                }
+            }
+
+            // Also check for any .elf files
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if let Some(ext) = entry_path.extension() {
+                        if ext.eq_ignore_ascii_case("elf") || ext.eq_ignore_ascii_case("self") {
+                            info!("Found executable at: {}", entry_path.display());
+                            return Ok(entry_path);
+                        }
+                    }
+                }
+            }
+
+            return Err(EmulatorError::Loader(LoaderError::InvalidElf(
+                format!(
+                    "Could not find executable in folder: {}\n\n\
+                     Expected one of:\n\
+                     - PS3_GAME/USRDIR/EBOOT.BIN\n\
+                     - USRDIR/EBOOT.BIN\n\
+                     - EBOOT.BIN\n\
+                     - Any .elf or .self file",
+                    path.display()
+                )
+            )));
+        }
+
+        // Path doesn't exist
+        Err(EmulatorError::Loader(LoaderError::InvalidElf(
+            format!("File or directory not found: {}", path.display())
+        )))
     }
 
     /// Parse EBOOT.BIN format
