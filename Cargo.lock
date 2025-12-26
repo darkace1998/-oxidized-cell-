@@ -3322,6 +3322,7 @@ dependencies = [
  "oc-loader",
  "oc-memory",
  "oc-ui",
+ "oc-vfs",
  "tracing",
  "tracing-subscriber",
 ]

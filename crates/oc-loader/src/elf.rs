@@ -282,19 +282,52 @@ impl ElfLoader {
 
         // Read segment data from file
         if filesz > 0 {
+            // Get file size for error context
+            let file_size = reader.seek(SeekFrom::End(0)).unwrap_or(0);
+            
+            // Validate segment bounds
+            let segment_end = phdr.p_offset + phdr.p_filesz;
+            if segment_end > file_size {
+                return Err(LoaderError::InvalidElf(format!(
+                    "Segment {} extends beyond file: segment data at offset 0x{:x} with size 0x{:x} \
+                     (ends at 0x{:x}) but file is only {} bytes (0x{:x}). \
+                     This may indicate a corrupted or truncated file.",
+                    index, phdr.p_offset, phdr.p_filesz, segment_end, file_size, file_size
+                )));
+            }
+            
             reader
                 .seek(SeekFrom::Start(phdr.p_offset))
-                .map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+                .map_err(|e| {
+                    LoaderError::InvalidElf(format!(
+                        "Failed to seek to segment {} data at offset 0x{:x}: {}",
+                        index, phdr.p_offset, e
+                    ))
+                })?;
 
             let mut data = vec![0u8; filesz];
             reader
                 .read_exact(&mut data)
-                .map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+                .map_err(|e| {
+                    LoaderError::InvalidElf(format!(
+                        "Failed to read segment {} data ({} bytes) at offset 0x{:x}: {} \
+                         (file size: {} bytes). The file may be corrupted or truncated.",
+                        index, filesz, phdr.p_offset, e, file_size
+                    ))
+                })?;
+
+            debug!(
+                "Read {} bytes for segment {} from offset 0x{:x}",
+                filesz, index, phdr.p_offset
+            );
 
             // Write to memory
             memory
                 .write_bytes(vaddr, &data)
-                .map_err(|e| LoaderError::InvalidElf(format!("Failed to write segment: {}", e)))?;
+                .map_err(|e| LoaderError::InvalidElf(format!(
+                    "Failed to write segment {} ({} bytes) to memory at 0x{:08x}: {}",
+                    index, filesz, vaddr, e
+                )))?;
         }
 
         // Zero out remaining memory (BSS section)
@@ -315,6 +348,27 @@ impl ElfLoader {
         header: &Elf64Header,
     ) -> Result<Vec<Elf64Shdr>, LoaderError> {
         if header.e_shoff == 0 || header.e_shnum == 0 {
+            debug!("No section headers present (e_shoff=0 or e_shnum=0)");
+            return Ok(Vec::new());
+        }
+
+        // Get file size for validation
+        let file_size = reader.seek(SeekFrom::End(0)).unwrap_or(0);
+        
+        debug!(
+            "Parsing {} section headers at offset 0x{:x} (entry size: {} bytes)",
+            header.e_shnum, header.e_shoff, header.e_shentsize
+        );
+        
+        // Validate section header table bounds
+        let shtab_end = header.e_shoff + (header.e_shnum as u64 * header.e_shentsize as u64);
+        if shtab_end > file_size {
+            // Section headers are optional for execution, so just warn and return empty
+            debug!(
+                "Section header table extends beyond file: table ends at 0x{:x} but file is {} bytes. \
+                 Skipping section headers (this is usually fine for execution).",
+                shtab_end, file_size
+            );
             return Ok(Vec::new());
         }
 
@@ -324,12 +378,22 @@ impl ElfLoader {
             let offset = header.e_shoff + (i as u64 * header.e_shentsize as u64);
             reader
                 .seek(SeekFrom::Start(offset))
-                .map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+                .map_err(|e| {
+                    LoaderError::InvalidElf(format!(
+                        "Failed to seek to section header {} at offset 0x{:x}: {}",
+                        i, offset, e
+                    ))
+                })?;
 
             let mut buf = [0u8; 64];
             reader
                 .read_exact(&mut buf)
-                .map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+                .map_err(|e| {
+                    LoaderError::InvalidElf(format!(
+                        "Failed to read section header {} (64 bytes) at offset 0x{:x}: {} (file size: {} bytes)",
+                        i, offset, e, file_size
+                    ))
+                })?;
 
             let shdr = Elf64Shdr {
                 sh_name: u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
@@ -578,31 +642,73 @@ impl ElfLoader {
 
     /// Parse ELF header from reader
     pub fn parse_header<R: Read + Seek>(reader: &mut R) -> Result<Elf64Header, LoaderError> {
-        reader.seek(SeekFrom::Start(0)).map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+        // Get file size for better error messages
+        let file_size = reader.seek(SeekFrom::End(0)).map_err(|e| {
+            LoaderError::InvalidElf(format!("Failed to determine file size: {}", e))
+        })?;
+        
+        debug!("Parsing ELF header, file size: {} bytes (0x{:x})", file_size, file_size);
+        
+        if file_size < 64 {
+            return Err(LoaderError::InvalidElf(format!(
+                "File too small to be a valid ELF: {} bytes (minimum 64 bytes required for ELF64 header)",
+                file_size
+            )));
+        }
+        
+        reader.seek(SeekFrom::Start(0)).map_err(|e| {
+            LoaderError::InvalidElf(format!("Failed to seek to file start: {}", e))
+        })?;
 
         let mut header = Elf64Header::default();
         
-        // Read ident
-        reader.read_exact(&mut header.e_ident).map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+        // Read ident (16 bytes)
+        reader.read_exact(&mut header.e_ident).map_err(|e| {
+            LoaderError::InvalidElf(format!(
+                "Failed to read ELF ident (16 bytes) at offset 0: {} (file size: {} bytes)",
+                e, file_size
+            ))
+        })?;
         
         // Verify magic
         if header.e_ident[0..4] != ELF_MAGIC {
-            return Err(LoaderError::InvalidElf("Invalid ELF magic".to_string()));
+            let magic_bytes: String = header.e_ident[0..4]
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            return Err(LoaderError::InvalidElf(format!(
+                "Invalid ELF magic bytes: {} (expected: 7F 45 4C 46 / \\x7FELF)",
+                magic_bytes
+            )));
         }
         
-        // Check 64-bit
+        // Check 64-bit (e_ident[4] == ELFCLASS64 == 2)
         if header.e_ident[4] != 2 {
-            return Err(LoaderError::InvalidElf("Not a 64-bit ELF".to_string()));
+            return Err(LoaderError::InvalidElf(format!(
+                "Not a 64-bit ELF: class={} (expected: 2 for ELFCLASS64). PS3 requires 64-bit executables.",
+                header.e_ident[4]
+            )));
         }
         
-        // Check big-endian (PS3 is big-endian)
+        // Check big-endian (e_ident[5] == ELFDATA2MSB == 2, PS3 is big-endian)
         if header.e_ident[5] != 2 {
-            return Err(LoaderError::InvalidElf("Not big-endian ELF".to_string()));
+            return Err(LoaderError::InvalidElf(format!(
+                "Not big-endian ELF: data encoding={} (expected: 2 for ELFDATA2MSB/big-endian). PS3 uses big-endian.",
+                header.e_ident[5]
+            )));
         }
         
-        // Read rest of header
+        debug!("ELF ident valid: 64-bit big-endian, version={}", header.e_ident[6]);
+        
+        // Read rest of header (48 bytes at offset 16)
         let mut buf = [0u8; 48];
-        reader.read_exact(&mut buf).map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+        reader.read_exact(&mut buf).map_err(|e| {
+            LoaderError::InvalidElf(format!(
+                "Failed to read ELF header fields (48 bytes) at offset 16: {} (file size: {} bytes)",
+                e, file_size
+            ))
+        })?;
         
         header.e_type = u16::from_be_bytes([buf[0], buf[1]]);
         header.e_machine = u16::from_be_bytes([buf[2], buf[3]]);
@@ -623,14 +729,42 @@ impl ElfLoader {
     
     /// Parse program headers
     pub fn parse_phdrs<R: Read + Seek>(reader: &mut R, header: &Elf64Header) -> Result<Vec<Elf64Phdr>, LoaderError> {
+        // Get file size for validation
+        let file_size = reader.seek(SeekFrom::End(0)).unwrap_or(0);
+        
+        debug!(
+            "Parsing {} program headers at offset 0x{:x} (entry size: {} bytes)",
+            header.e_phnum, header.e_phoff, header.e_phentsize
+        );
+        
+        // Validate program header table bounds
+        let phtab_end = header.e_phoff + (header.e_phnum as u64 * header.e_phentsize as u64);
+        if phtab_end > file_size {
+            return Err(LoaderError::InvalidElf(format!(
+                "Program header table extends beyond file: table ends at offset 0x{:x} but file is only {} bytes. \
+                 Header claims {} program headers at offset 0x{:x} with entry size {} bytes.",
+                phtab_end, file_size, header.e_phnum, header.e_phoff, header.e_phentsize
+            )));
+        }
+        
         let mut phdrs = Vec::with_capacity(header.e_phnum as usize);
         
         for i in 0..header.e_phnum {
             let offset = header.e_phoff + (i as u64 * header.e_phentsize as u64);
-            reader.seek(SeekFrom::Start(offset)).map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+            reader.seek(SeekFrom::Start(offset)).map_err(|e| {
+                LoaderError::InvalidElf(format!(
+                    "Failed to seek to program header {} at offset 0x{:x}: {}",
+                    i, offset, e
+                ))
+            })?;
             
             let mut buf = [0u8; 56];
-            reader.read_exact(&mut buf).map_err(|e| LoaderError::InvalidElf(e.to_string()))?;
+            reader.read_exact(&mut buf).map_err(|e| {
+                LoaderError::InvalidElf(format!(
+                    "Failed to read program header {} (56 bytes) at offset 0x{:x}: {} (file size: {} bytes)",
+                    i, offset, e, file_size
+                ))
+            })?;
             
             let phdr = Elf64Phdr {
                 p_type: u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),

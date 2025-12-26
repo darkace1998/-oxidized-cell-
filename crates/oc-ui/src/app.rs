@@ -814,7 +814,7 @@ impl OxidizedCellApp {
                                 egui::TextureOptions::LINEAR
                             ));
                             self.last_fb_dimensions = (fb.width, fb.height);
-                        } else if let Some(ref texture) = self.framebuffer_texture {
+                        } else if let Some(ref mut texture) = self.framebuffer_texture {
                             // Update existing texture with new pixel data
                             let color_image = egui::ColorImage::from_rgba_unmultiplied(
                                 [fb.width as usize, fb.height as usize],

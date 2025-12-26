@@ -474,24 +474,69 @@ impl GameLoader {
 
     /// Load an ELF file from bytes
     fn load_elf(&self, data: &[u8], path: String, is_self: bool) -> Result<LoadedGame> {
+        info!(
+            "Loading ELF data: {} bytes from '{}' (is_self: {})",
+            data.len(),
+            path,
+            is_self
+        );
+        
         let mut cursor = Cursor::new(data);
 
-        // Parse ELF header
-        let mut elf_loader = ElfLoader::new(&mut cursor).map_err(EmulatorError::Loader)?;
+        // Parse ELF header with enhanced error context
+        let mut elf_loader = ElfLoader::new(&mut cursor).map_err(|e| {
+            error!(
+                "Failed to parse ELF from '{}' ({} bytes): {}",
+                path, data.len(), e
+            );
+            EmulatorError::Loader(LoaderError::InvalidElf(format!(
+                "Failed to parse ELF file '{}' ({} bytes): {}",
+                path, data.len(), e
+            )))
+        })?;
 
         info!(
-            "ELF entry point: 0x{:x}, {} program headers",
+            "ELF parsed successfully: entry=0x{:x}, type={}, machine=0x{:x}, {} program headers, {} section headers",
             elf_loader.entry_point,
-            elf_loader.phdrs.len()
+            match elf_loader.header.e_type {
+                1 => "ET_REL (relocatable)",
+                2 => "ET_EXEC (executable)",
+                3 => "ET_DYN (shared object)",
+                4 => "ET_CORE (core dump)",
+                _ => "unknown"
+            },
+            elf_loader.header.e_machine,
+            elf_loader.phdrs.len(),
+            elf_loader.shdrs.len()
         );
+
+        // Log program headers for debugging
+        for (i, phdr) in elf_loader.phdrs.iter().enumerate() {
+            let type_str = match phdr.p_type {
+                0 => "NULL",
+                1 => "LOAD",
+                2 => "DYNAMIC",
+                3 => "INTERP",
+                4 => "NOTE",
+                7 => "TLS",
+                _ => "OTHER"
+            };
+            debug!(
+                "  PHDR[{}]: type={} offset=0x{:x} vaddr=0x{:x} filesz=0x{:x} memsz=0x{:x} flags=0x{:x}",
+                i, type_str, phdr.p_offset, phdr.p_vaddr, phdr.p_filesz, phdr.p_memsz, phdr.p_flags
+            );
+        }
 
         // Determine base address
         let base_addr = self.calculate_base_addr(&elf_loader);
 
-        // Load segments into memory
+        // Load segments into memory with enhanced error context
         elf_loader
             .load_segments(&mut cursor, &self.memory, base_addr)
-            .map_err(EmulatorError::Loader)?;
+            .map_err(|e| {
+                error!("Failed to load ELF segments from '{}': {}", path, e);
+                EmulatorError::Loader(e)
+            })?;
 
         // Parse symbols for debugging
         if let Err(e) = elf_loader.parse_symbols(&mut cursor) {

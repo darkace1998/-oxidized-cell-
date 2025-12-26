@@ -121,7 +121,29 @@ impl PpuDecoder {
                 (InstructionForm::VA, xo)
             }
             
-            _ => (InstructionForm::Unknown, 0),
+            // Reserved/invalid opcodes - provide better Unknown handling
+            0 => {
+                tracing::debug!("Reserved opcode 0 encountered - likely invalid code or data");
+                (InstructionForm::Unknown, 0)
+            }
+            1 => {
+                tracing::debug!("Reserved opcode 1 encountered - likely invalid code or data");
+                (InstructionForm::Unknown, 0)
+            }
+            5 | 6 => {
+                tracing::debug!("Reserved opcode {} encountered - likely invalid code or data", op);
+                (InstructionForm::Unknown, 0)
+            }
+            56 | 57 | 60 | 61 => {
+                // These are valid PowerPC opcodes but not commonly used on Cell BE
+                tracing::debug!("Uncommon opcode {} - may need implementation", op);
+                (InstructionForm::Unknown, 0)
+            }
+            
+            _ => {
+                tracing::debug!("Unknown primary opcode {} (0x{:02x})", op, op);
+                (InstructionForm::Unknown, 0)
+            }
         };
         
         DecodedInstruction {
@@ -206,6 +228,79 @@ impl PpuDecoder {
         let me = ((opcode >> 1) & 0x1F) as u8;
         let rc = (opcode & 1) != 0;
         (rs, ra, rb, mb, me, rc)
+    }
+    
+    /// Get a human-readable mnemonic for the instruction (best effort)
+    pub fn get_mnemonic(opcode: u32) -> &'static str {
+        let op = ((opcode >> 26) & 0x3F) as u8;
+        
+        match op {
+            // Common D-form
+            14 => "addi",
+            15 => "addis",
+            32 => "lwz",
+            33 => "lwzu",
+            34 => "lbz",
+            35 => "lbzu",
+            36 => "stw",
+            37 => "stwu",
+            38 => "stb",
+            39 => "stbu",
+            40 => "lhz",
+            41 => "lhzu",
+            42 => "lha",
+            43 => "lhau",
+            44 => "sth",
+            45 => "sthu",
+            46 => "lmw",
+            47 => "stmw",
+            48 => "lfs",
+            49 => "lfsu",
+            50 => "lfd",
+            51 => "lfdu",
+            52 => "stfs",
+            53 => "stfsu",
+            54 => "stfd",
+            55 => "stfdu",
+            24 => "ori",
+            25 => "oris",
+            26 => "xori",
+            27 => "xoris",
+            28 => "andi.",
+            29 => "andis.",
+            // Branch/Control
+            16 => "bc",
+            17 => "sc",
+            18 => "b",
+            19 => "xl-form",
+            // Integer arithmetic extended
+            31 => "x-form",
+            // Rotate
+            20 => "rlwimi",
+            21 => "rlwinm",
+            23 => "rlwnm",
+            30 => "md-form",
+            // FP/Vector
+            4 => "vector",
+            59 => "fp-single",
+            63 => "fp-double",
+            // DS-form
+            58 => "ld/ldu/lwa",
+            62 => "std/stdu",
+            // Comparison/arith
+            7 => "mulli",
+            8 => "subfic",
+            10 => "cmpli",
+            11 => "cmpi",
+            12 => "addic",
+            13 => "addic.",
+            // Reserved
+            0 => "reserved-0",
+            1 => "reserved-1",
+            2 => "tdi",
+            3 => "twi",
+            _ => "unknown"
+        }
     }
 }
 

@@ -204,7 +204,28 @@ impl PpuInterpreter {
             InstructionForm::VA => self.execute_va_form(thread, opcode),
             InstructionForm::SC => self.execute_sc(thread, opcode),
             _ => {
-                tracing::warn!("Unimplemented instruction form: {:?} at 0x{:08x}", decoded.form, thread.pc());
+                // Decode the raw opcode for better diagnostics
+                let primary_op = (opcode >> 26) & 0x3F;
+                let mnemonic = PpuDecoder::get_mnemonic(opcode);
+                tracing::warn!(
+                    "Unimplemented instruction form: {:?} at 0x{:08x} (opcode: 0x{:08x}, primary_op: {}, mnemonic: '{}')",
+                    decoded.form, thread.pc(), opcode, primary_op, mnemonic
+                );
+                tracing::debug!(
+                    "Instruction bytes at 0x{:08x}: [{:02x} {:02x} {:02x} {:02x}]",
+                    thread.pc(),
+                    (opcode >> 24) & 0xFF,
+                    (opcode >> 16) & 0xFF,
+                    (opcode >> 8) & 0xFF,
+                    opcode & 0xFF
+                );
+                // Return error instead of silently continuing for Unknown form
+                if decoded.form == InstructionForm::Unknown {
+                    return Err(PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    });
+                }
                 thread.advance_pc();
                 Ok(())
             }
@@ -570,7 +591,14 @@ impl PpuInterpreter {
                 self.update_cr0(thread, result);
             }
             _ => {
-                tracing::warn!("Unimplemented D-form op {} at 0x{:08x}", op, thread.pc());
+                tracing::warn!(
+                    "Unimplemented D-form op {} at 0x{:08x} (opcode: 0x{:08x}, rt={}, ra={}, d={})",
+                    op, thread.pc(), opcode, rt, ra, d
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         }
 
@@ -1229,7 +1257,14 @@ impl PpuInterpreter {
                 if rc { self.update_cr0(thread, result); }
             }
             _ => {
-                tracing::warn!("Unimplemented X-form xo {} at 0x{:08x}", xo, thread.pc());
+                tracing::warn!(
+                    "Unimplemented X-form xo {} at 0x{:08x} (opcode: 0x{:08x}, rt={}, ra={}, rb={})",
+                    xo, thread.pc(), opcode, rt, ra, rb
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         }
 
@@ -1535,7 +1570,14 @@ impl PpuInterpreter {
                 if rc { self.update_cr0(thread, thread.gpr(rt as usize)); }
             }
             _ => {
-                tracing::warn!("Unimplemented XO-form xo {} at 0x{:08x}", xo, thread.pc());
+                tracing::warn!(
+                    "Unimplemented XO-form xo {} at 0x{:08x} (opcode: 0x{:08x}, rt={}, ra={}, rb={})",
+                    xo, thread.pc(), opcode, rt, ra, rb
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         }
 
@@ -1649,8 +1691,14 @@ impl PpuInterpreter {
                 thread.advance_pc();
             }
             _ => {
-                tracing::warn!("Unimplemented XL-form xo {} at 0x{:08x}", xo, thread.pc());
-                thread.advance_pc();
+                tracing::warn!(
+                    "Unimplemented XL-form xo {} at 0x{:08x} (opcode: 0x{:08x}, bo={}, bi={})",
+                    xo, thread.pc(), opcode, bo, bi
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         }
 
@@ -1693,7 +1741,14 @@ impl PpuInterpreter {
                 if rc { self.update_cr0(thread, result); }
             }
             _ => {
-                tracing::warn!("Unimplemented M-form op {} at 0x{:08x}", op, thread.pc());
+                tracing::warn!(
+                    "Unimplemented M-form op {} at 0x{:08x} (opcode: 0x{:08x}, rs={}, ra={}, mb={}, me={})",
+                    op, thread.pc(), opcode, rs, ra, mb, me
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         }
 
@@ -1783,8 +1838,14 @@ impl PpuInterpreter {
             // fsel - Floating Select
             (63, 23) => float::fsel(a, b, c),
             _ => {
-                tracing::warn!("Unimplemented A-form xo {} at 0x{:08x}", xo, thread.pc());
-                0.0
+                tracing::warn!(
+                    "Unimplemented A-form primary={} xo={} at 0x{:08x} (opcode: 0x{:08x}, frt={}, fra={}, frb={}, frc={})",
+                    primary, xo, thread.pc(), opcode, frt, fra, frb, frc
+                );
+                return Err(PpuError::InvalidInstruction {
+                    addr: thread.pc() as u32,
+                    opcode,
+                });
             }
         };
 
@@ -1832,8 +1893,14 @@ impl PpuInterpreter {
                 // vsel - Vector Select
                 0x2A => vector::vsel(a, b, c),
                 _ => {
-                    tracing::warn!("Unimplemented VA-form xo {} at 0x{:08x}", xo_6bit, thread.pc());
-                    [0u32; 4]
+                    tracing::warn!(
+                        "Unimplemented VA-form xo {} at 0x{:08x} (opcode: 0x{:08x}, vrt={}, vra={}, vrb={}, vrc={})",
+                        xo_6bit, thread.pc(), opcode, vrt, vra, vrb, vrc
+                    );
+                    return Err(PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    });
                 }
             };
 
@@ -2000,8 +2067,14 @@ impl PpuInterpreter {
                     a // Return unchanged
                 }
                 _ => {
-                    tracing::warn!("Unimplemented VX-form xo {} at 0x{:08x}", xo_11bit, thread.pc());
-                    [0u32; 4]
+                    tracing::warn!(
+                        "Unimplemented VX-form xo 0x{:03x} ({}) at 0x{:08x} (opcode: 0x{:08x}, vrt={}, vra={}, vrb={})",
+                        xo_11bit, xo_11bit, thread.pc(), opcode, vrt, vra, vrb
+                    );
+                    return Err(PpuError::InvalidInstruction {
+                        addr: thread.pc() as u32,
+                        opcode,
+                    });
                 }
             };
 

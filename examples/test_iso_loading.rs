@@ -1,22 +1,37 @@
 //! Test ISO loading functionality
 //!
 //! This example tests loading an ISO file to debug the emulator's ISO parsing.
+//!
+//! Run with: cargo run --example test_iso_loading [path_to_iso]
 
 use oc_vfs::{IsoReader, IsoDirectoryEntry};
 use std::path::PathBuf;
 
 fn main() {
     // Set up logging
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
-        .init();
+        .try_init();
 
     // Path to the ISO file
     let iso_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from("target/Adventure Time - Explore the Dungeon Because I Don't Know! (Europe) (En,Fr,De,Es,It).dec.iso")
+            // Try to find any ISO in the target directory
+            let target_dir = PathBuf::from("target");
+            if target_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&target_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e.eq_ignore_ascii_case("iso")).unwrap_or(false) {
+                            println!("Found ISO: {:?}", path);
+                            return path;
+                        }
+                    }
+                }
+            }
+            PathBuf::from("game.iso")
         });
 
     println!("========================================");
@@ -24,6 +39,7 @@ fn main() {
     println!("========================================");
     println!("ISO Path: {:?}", iso_path);
     println!();
+
 
     // Check if file exists
     if !iso_path.exists() {
