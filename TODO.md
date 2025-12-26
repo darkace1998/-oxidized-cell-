@@ -115,8 +115,8 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement get_data through global manager
   - [x] Implement get_capability_info through global manager
   - [x] Connect to oc-input backend
-  - [ ] Add rumble/vibration support
-  - [ ] Support multiple controllers
+  - [x] Add rumble/vibration support
+  - [x] Support multiple controllers
 
 - [x] **cellKb** - Keyboard Input
   - [x] Implement KbManager with init/end
@@ -124,7 +124,7 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement read through global manager
   - [x] Implement set_read_mode/set_code_type through global manager
   - [x] Support multiple keyboard layouts
-  - [ ] Connect to oc-input backend
+  - [x] Connect to oc-input backend
 
 - [x] **cellMouse** - Mouse Input
   - [x] Implement MouseManager with init/end
@@ -132,15 +132,15 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement get_data/get_data_list through global manager
   - [x] Implement get_raw_data through global manager
   - [x] Add button state handling
-  - [ ] Connect to oc-input backend
+  - [x] Connect to oc-input backend
 
 #### Audio Modules
 - [x] **cellAudio** - Audio Output (Connected to global context)
   - [x] Implement init/quit through global manager
   - [x] Implement port open/close through global manager
   - [x] Implement port start/stop through global manager
-  - [ ] Connect to oc-audio backend
-  - [ ] Add mixing support
+  - [x] Connect to oc-audio backend
+  - [x] Add mixing support
 
 - [x] **cellMic** - Microphone Input
   - [x] Implement MicManager with init/end
@@ -149,15 +149,15 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement start/stop through global manager
   - [x] Implement read through global manager
   - [x] Add device enumeration
-  - [ ] Connect to actual audio capture backend
+  - [x] Connect to actual audio capture backend
 
 #### File System Modules
 - [x] **cellFs** - File System (Connected to global context)
   - [x] Implement close through global manager
   - [x] Implement closedir through global manager
-  - [ ] Connect to oc-vfs backend
-  - [ ] Implement file read/write operations
-  - [ ] Add directory operations
+  - [x] Connect to oc-vfs backend
+  - [x] Implement file read/write operations
+  - [x] Add directory operations
   - [ ] Support asynchronous I/O
 
 #### Media Decoding Modules
@@ -670,3 +670,15 @@ See the [Contributing section in README.md](README.md#contributing) for guidelin
 *8. cellSpurs - Add event flags and barriers for synchronization*
 *9. cellSpursJq - Integrate with actual SPU job execution*
 *10. cellPad - Connect to oc-input backend with button mapping*
+
+*HLE module update (December 26, 2024 #2): Implemented next 10 HLE module todos:*
+*1. cellPad - Add rumble/vibration support with set_actuator function and motor intensity control*
+*2. cellPad - Support multiple controllers with per-controller state tracking (up to 7 controllers)*
+*3. cellKb - Connect to oc-input backend with keyboard state polling and event mapping*
+*4. cellMouse - Connect to oc-input backend with mouse state polling and button/position tracking*
+*5. cellAudio - Connect to oc-audio backend with audio port connections and buffer submission*
+*6. cellAudio - Add mixing support with per-port volume control and multi-port audio mixing*
+*7. cellMic - Connect to audio capture backend with device enumeration and capture callbacks*
+*8. cellFs - Connect to oc-vfs backend with path mapping and file handle management*
+*9. cellFs - Implement file read/write operations with stat, fstat, and truncate support*
+*10. cellFs - Add directory operations with mkdir, rmdir, readdir, and unlink support*
