@@ -102,6 +102,189 @@ struct EsEntry {
     au_queue: Vec<CellDmuxAuInfo>,
 }
 
+/// Container parser for demultiplexing streams
+#[derive(Debug, Clone)]
+struct ContainerParser {
+    /// Container type
+    stream_type: u32,
+    /// Current parsing position
+    position: usize,
+    /// Total size
+    total_size: usize,
+}
+
+impl ContainerParser {
+    /// Create a new container parser
+    fn new(stream_type: u32) -> Self {
+        Self {
+            stream_type,
+            position: 0,
+            total_size: 0,
+        }
+    }
+
+    /// Parse PAMF (PlayStation Audio/video Multiplexed Format)
+    fn parse_pamf(&mut self, data: &[u8]) -> Result<Vec<(u32, CellDmuxAuInfo)>, i32> {
+        trace!("ContainerParser::parse_pamf: size={}", data.len());
+        
+        // TODO: Actual PAMF parsing
+        // PAMF is a custom Sony container format
+        // In a real implementation:
+        // 1. Parse PAMF header
+        // 2. Read stream info tables
+        // 3. Extract PTS/DTS timestamps
+        // 4. Separate audio and video streams
+        // 5. Build AU info structures
+        
+        let mut aus = Vec::new();
+        self.total_size = data.len();
+        
+        // Simulate finding one AU
+        if data.len() >= 16 {
+            let au_info = CellDmuxAuInfo {
+                pts: 0,
+                dts: 0,
+                user_data: 0,
+                spec_info: 0,
+                au_addr: 0,
+                au_size: data.len() as u32,
+            };
+            aus.push((0, au_info)); // ES ID 0
+        }
+        
+        Ok(aus)
+    }
+
+    /// Parse MPEG-2 Program Stream (MPEG-PS)
+    fn parse_mpeg_ps(&mut self, data: &[u8]) -> Result<Vec<(u32, CellDmuxAuInfo)>, i32> {
+        trace!("ContainerParser::parse_mpeg_ps: size={}", data.len());
+        
+        // TODO: Actual MPEG-2 PS parsing
+        // In a real implementation:
+        // 1. Find pack start codes (0x000001BA)
+        // 2. Parse pack header
+        // 3. Find PES packet start codes (0x000001BD, 0x000001C0-DF)
+        // 4. Parse PES headers
+        // 5. Extract PTS/DTS from PES header
+        // 6. Identify stream IDs (video: 0xE0-0xEF, audio: 0xC0-0xDF)
+        // 7. Build AU info for each stream
+        
+        let mut aus = Vec::new();
+        self.total_size = data.len();
+        self.position = 0;
+        
+        // Simulate scanning for start codes
+        while self.position + 4 <= data.len() {
+            // Look for start code prefix (0x000001)
+            if self.position + 3 < data.len() 
+                && data[self.position] == 0x00
+                && data[self.position + 1] == 0x00
+                && data[self.position + 2] == 0x01 {
+                
+                let stream_id = data[self.position + 3];
+                
+                // Check if it's a video or audio stream
+                let es_type = if (0xE0..=0xEF).contains(&stream_id) {
+                    CELL_DMUX_ES_TYPE_VIDEO
+                } else if (0xC0..=0xDF).contains(&stream_id) {
+                    CELL_DMUX_ES_TYPE_AUDIO
+                } else {
+                    self.position += 4;
+                    continue;
+                };
+                
+                // Build AU info (simplified)
+                let au_info = CellDmuxAuInfo {
+                    pts: 0, // Would extract from PES header
+                    dts: 0,
+                    user_data: 0,
+                    spec_info: 0,
+                    au_addr: self.position as u32,
+                    au_size: 2048, // Typical packet size
+                };
+                
+                aus.push((es_type, au_info));
+                self.position += 2048;
+            } else {
+                self.position += 1;
+            }
+        }
+        
+        Ok(aus)
+    }
+
+    /// Parse MPEG-2 Transport Stream (MPEG-TS)
+    fn parse_mpeg_ts(&mut self, data: &[u8]) -> Result<Vec<(u32, CellDmuxAuInfo)>, i32> {
+        trace!("ContainerParser::parse_mpeg_ts: size={}", data.len());
+        
+        // TODO: Actual MPEG-2 TS parsing
+        // In a real implementation:
+        // 1. Find sync bytes (0x47) every 188 bytes
+        // 2. Parse TS packet header
+        // 3. Extract PID (Program ID)
+        // 4. Parse PAT (Program Association Table) for PMT PIDs
+        // 5. Parse PMT (Program Map Table) for elementary stream PIDs
+        // 6. Assemble PES packets from TS packets
+        // 7. Extract PTS/DTS from PES headers
+        // 8. Build AU info for each elementary stream
+        
+        let mut aus = Vec::new();
+        self.total_size = data.len();
+        self.position = 0;
+        
+        const TS_PACKET_SIZE: usize = 188;
+        
+        // Scan for TS packets
+        while self.position + TS_PACKET_SIZE <= data.len() {
+            // Check for sync byte
+            if data[self.position] == 0x47 {
+                // Parse PID from TS header
+                let pid = ((data[self.position + 1] as u16 & 0x1F) << 8) 
+                        | (data[self.position + 2] as u16);
+                
+                // Skip PAT/PMT packets (PID 0 and typically 16-32)
+                if pid > 32 {
+                    // Assume this is an elementary stream
+                    let au_info = CellDmuxAuInfo {
+                        pts: 0,
+                        dts: 0,
+                        user_data: 0,
+                        spec_info: 0,
+                        au_addr: self.position as u32,
+                        au_size: TS_PACKET_SIZE as u32,
+                    };
+                    
+                    // Determine stream type based on PID range (simplified)
+                    let es_type = if pid < 256 {
+                        CELL_DMUX_ES_TYPE_VIDEO
+                    } else {
+                        CELL_DMUX_ES_TYPE_AUDIO
+                    };
+                    
+                    aus.push((es_type, au_info));
+                }
+                
+                self.position += TS_PACKET_SIZE;
+            } else {
+                // Resync
+                self.position += 1;
+            }
+        }
+        
+        Ok(aus)
+    }
+
+    /// Parse container and extract elementary streams
+    fn parse(&mut self, data: &[u8]) -> Result<Vec<(u32, CellDmuxAuInfo)>, i32> {
+        match self.stream_type {
+            CELL_DMUX_STREAM_TYPE_PAMF => self.parse_pamf(data),
+            CELL_DMUX_STREAM_TYPE_MPEG2_PS => self.parse_mpeg_ps(data),
+            CELL_DMUX_STREAM_TYPE_MPEG2_TS => self.parse_mpeg_ts(data),
+            _ => Err(CELL_DMUX_ERROR_ARG),
+        }
+    }
+}
+
 /// Demux entry
 #[derive(Debug, Clone)]
 struct DmuxEntry {
@@ -113,6 +296,26 @@ struct DmuxEntry {
     stream_addr: u32,
     stream_size: u32,
     has_stream: bool,
+    /// Container parser
+    parser: Option<ContainerParser>,
+}
+
+impl DmuxEntry {
+    fn new(dmux_type: CellDmuxType, resource: CellDmuxResource, cb: CellDmuxCb) -> Self {
+        let parser = ContainerParser::new(dmux_type.stream_type);
+        
+        Self {
+            dmux_type,
+            resource,
+            cb,
+            es_map: HashMap::new(),
+            next_es_id: 1,
+            stream_addr: 0,
+            stream_size: 0,
+            has_stream: false,
+            parser: Some(parser),
+        }
+    }
 }
 
 /// Dmux Manager
@@ -145,16 +348,7 @@ impl DmuxManager {
         let handle = self.next_handle;
         self.next_handle += 1;
 
-        let entry = DmuxEntry {
-            dmux_type,
-            resource,
-            cb,
-            es_map: HashMap::new(),
-            next_es_id: 1,
-            stream_addr: 0,
-            stream_size: 0,
-            has_stream: false,
-        };
+        let entry = DmuxEntry::new(dmux_type, resource, cb);
 
         self.demuxers.insert(handle, entry);
         Ok(handle)
@@ -182,7 +376,33 @@ impl DmuxManager {
         entry.stream_size = stream_size;
         entry.has_stream = true;
 
-        // TODO: Parse stream and populate AU queues
+        // Parse the container and populate AU queues for each elementary stream
+        if let Some(parser) = &mut entry.parser {
+            // Simulate reading stream data (in real impl, would read from memory)
+            let stream_data = vec![0u8; stream_size as usize];
+            
+            // Parse container to extract elementary streams
+            match parser.parse(&stream_data) {
+                Ok(aus) => {
+                    trace!("DmuxManager::set_stream: parsed {} AUs", aus.len());
+                    
+                    // Distribute AUs to appropriate elementary streams
+                    for (es_type, au_info) in aus {
+                        // Find matching ES by type
+                        for es in entry.es_map.values_mut() {
+                            if es.es_attr.es_type == es_type {
+                                es.au_queue.push(au_info);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    trace!("DmuxManager::set_stream: parse failed with error {}", e);
+                    return Err(e);
+                }
+            }
+        }
+
         Ok(())
     }
 
