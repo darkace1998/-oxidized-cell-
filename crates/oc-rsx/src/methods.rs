@@ -64,6 +64,35 @@ pub const NV4097_SET_CULL_FACE_ENABLE: u32 = 0x0410;
 pub const NV4097_SET_CULL_FACE: u32 = 0x0414;
 pub const NV4097_SET_FRONT_FACE: u32 = 0x0418;
 
+// Alpha test methods
+pub const NV4097_SET_ALPHA_TEST_ENABLE: u32 = 0x0300;
+pub const NV4097_SET_ALPHA_FUNC: u32 = 0x037C;
+pub const NV4097_SET_ALPHA_REF: u32 = 0x0380;
+
+// Polygon offset methods
+pub const NV4097_SET_POLYGON_OFFSET_FILL_ENABLE: u32 = 0x0370;
+pub const NV4097_SET_POLYGON_OFFSET_LINE_ENABLE: u32 = 0x0368;
+pub const NV4097_SET_POLYGON_OFFSET_POINT_ENABLE: u32 = 0x036C;
+pub const NV4097_SET_POLYGON_OFFSET_SCALE_FACTOR: u32 = 0x0A18;
+pub const NV4097_SET_POLYGON_OFFSET_BIAS: u32 = 0x0A1C;
+
+// Line and point methods
+pub const NV4097_SET_LINE_WIDTH: u32 = 0x1DB0;
+pub const NV4097_SET_POINT_SIZE: u32 = 0x1DB4;
+pub const NV4097_SET_POINT_SPRITE_CONTROL: u32 = 0x1DB8;
+
+// Anti-aliasing methods
+pub const NV4097_SET_ANTI_ALIASING_CONTROL: u32 = 0x017C;
+pub const NV4097_SET_SAMPLE_COUNT_CONTROL: u32 = 0x0178;
+
+// Primitive restart methods
+pub const NV4097_SET_RESTART_INDEX_ENABLE: u32 = 0x0DEC;
+pub const NV4097_SET_RESTART_INDEX: u32 = 0x0DF0;
+
+// Occlusion query methods
+pub const NV4097_SET_ZPASS_PIXEL_COUNT_ENABLE: u32 = 0x1DA0;
+pub const NV4097_SET_REPORT_SEMAPHORE_OFFSET: u32 = 0x1D00;
+
 // Vertex program methods
 pub const NV4097_SET_VERTEX_PROGRAM_START_SLOT: u32 = 0x0480;
 pub const NV4097_SET_VERTEX_PROGRAM_LOAD_SLOT: u32 = 0x0484;
@@ -211,6 +240,78 @@ impl MethodHandler {
             }
             NV4097_SET_FRONT_FACE => {
                 state.front_face = data;
+            }
+
+            // Alpha test
+            NV4097_SET_ALPHA_TEST_ENABLE => {
+                state.alpha_test_enable = data != 0;
+            }
+            NV4097_SET_ALPHA_FUNC => {
+                state.alpha_test_func = data;
+            }
+            NV4097_SET_ALPHA_REF => {
+                state.alpha_test_ref = f32::from_bits(data);
+            }
+
+            // Polygon offset
+            NV4097_SET_POLYGON_OFFSET_FILL_ENABLE => {
+                state.polygon_offset_fill_enable = data != 0;
+            }
+            NV4097_SET_POLYGON_OFFSET_LINE_ENABLE => {
+                state.polygon_offset_line_enable = data != 0;
+            }
+            NV4097_SET_POLYGON_OFFSET_POINT_ENABLE => {
+                state.polygon_offset_point_enable = data != 0;
+            }
+            NV4097_SET_POLYGON_OFFSET_SCALE_FACTOR => {
+                state.polygon_offset_factor = f32::from_bits(data);
+            }
+            NV4097_SET_POLYGON_OFFSET_BIAS => {
+                state.polygon_offset_units = f32::from_bits(data);
+            }
+
+            // Line and point
+            NV4097_SET_LINE_WIDTH => {
+                state.line_width = f32::from_bits(data);
+            }
+            NV4097_SET_POINT_SIZE => {
+                state.point_size = f32::from_bits(data);
+            }
+            NV4097_SET_POINT_SPRITE_CONTROL => {
+                state.point_sprite_enable = (data & 0x1) != 0;
+            }
+
+            // Anti-aliasing
+            NV4097_SET_ANTI_ALIASING_CONTROL => {
+                state.multisample_enable = (data & 0x1) != 0;
+                state.sample_alpha_to_coverage_enable = (data & 0x10) != 0;
+            }
+            NV4097_SET_SAMPLE_COUNT_CONTROL => {
+                // Extract sample count from data
+                // 0 = 1 sample, 1 = 2 samples, 2 = 4 samples, 3 = 8 samples
+                state.sample_count = match data & 0x3 {
+                    0 => 1,
+                    1 => 2,
+                    2 => 4,
+                    3 => 8,
+                    _ => 1,
+                };
+            }
+
+            // Primitive restart
+            NV4097_SET_RESTART_INDEX_ENABLE => {
+                state.primitive_restart_enable = data != 0;
+            }
+            NV4097_SET_RESTART_INDEX => {
+                state.primitive_restart_index = data;
+            }
+
+            // Occlusion query
+            NV4097_SET_ZPASS_PIXEL_COUNT_ENABLE => {
+                state.occlusion_query_enable = data != 0;
+            }
+            NV4097_SET_REPORT_SEMAPHORE_OFFSET => {
+                state.occlusion_query_offset = data;
             }
 
             // Shader programs

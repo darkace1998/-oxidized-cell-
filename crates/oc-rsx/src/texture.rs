@@ -1,6 +1,9 @@
 //! RSX texture handling
 
 use bitflags::bitflags;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 bitflags! {
     /// Texture format flags
@@ -64,6 +67,14 @@ pub struct Texture {
     pub wrap_r: TextureWrap,
     /// Whether texture is cubemap
     pub is_cubemap: bool,
+    /// Anisotropic filtering level (1.0 = disabled, 2.0, 4.0, 8.0, 16.0)
+    pub anisotropy: f32,
+    /// LOD bias
+    pub lod_bias: f32,
+    /// Minimum LOD level
+    pub min_lod: f32,
+    /// Maximum LOD level
+    pub max_lod: f32,
 }
 
 impl Texture {
@@ -83,6 +94,10 @@ impl Texture {
             wrap_t: TextureWrap::REPEAT,
             wrap_r: TextureWrap::REPEAT,
             is_cubemap: false,
+            anisotropy: 1.0,
+            lod_bias: 0.0,
+            min_lod: -1000.0,
+            max_lod: 1000.0,
         }
     }
 
@@ -230,6 +245,223 @@ impl TextureCache {
     }
 }
 
+/// Texture sampler configuration for accurate sampling
+#[derive(Debug, Clone)]
+pub struct TextureSampler {
+    /// Minification filter
+    pub min_filter: TextureFilter,
+    /// Magnification filter
+    pub mag_filter: TextureFilter,
+    /// Mipmap filter
+    pub mipmap_filter: TextureFilter,
+    /// Wrap mode U
+    pub wrap_s: TextureWrap,
+    /// Wrap mode V
+    pub wrap_t: TextureWrap,
+    /// Wrap mode W
+    pub wrap_r: TextureWrap,
+    /// Anisotropic filtering level (1.0-16.0)
+    pub max_anisotropy: f32,
+    /// LOD bias
+    pub lod_bias: f32,
+    /// Minimum LOD
+    pub min_lod: f32,
+    /// Maximum LOD
+    pub max_lod: f32,
+    /// Border color (RGBA)
+    pub border_color: [f32; 4],
+    /// Compare mode for depth textures
+    pub compare_enable: bool,
+    /// Compare function
+    pub compare_func: u32,
+}
+
+impl TextureSampler {
+    /// Create a new texture sampler with default settings
+    pub fn new() -> Self {
+        Self {
+            min_filter: TextureFilter::LINEAR,
+            mag_filter: TextureFilter::LINEAR,
+            mipmap_filter: TextureFilter::LINEAR,
+            wrap_s: TextureWrap::REPEAT,
+            wrap_t: TextureWrap::REPEAT,
+            wrap_r: TextureWrap::REPEAT,
+            max_anisotropy: 1.0,
+            lod_bias: 0.0,
+            min_lod: -1000.0,
+            max_lod: 1000.0,
+            border_color: [0.0, 0.0, 0.0, 0.0],
+            compare_enable: false,
+            compare_func: 0, // NEVER
+        }
+    }
+
+    /// Create a sampler with anisotropic filtering
+    pub fn with_anisotropy(mut self, level: f32) -> Self {
+        self.max_anisotropy = level.clamp(1.0, 16.0);
+        self
+    }
+
+    /// Create a sampler with LOD bias
+    pub fn with_lod_bias(mut self, bias: f32) -> Self {
+        self.lod_bias = bias;
+        self
+    }
+
+    /// Create a sampler with LOD range
+    pub fn with_lod_range(mut self, min: f32, max: f32) -> Self {
+        self.min_lod = min;
+        self.max_lod = max;
+        self
+    }
+
+    /// Create a sampler for depth comparison
+    pub fn with_compare(mut self, func: u32) -> Self {
+        self.compare_enable = true;
+        self.compare_func = func;
+        self
+    }
+
+    /// Apply sampler configuration to a texture
+    pub fn apply_to_texture(&self, texture: &mut Texture) {
+        texture.min_filter = self.min_filter;
+        texture.mag_filter = self.mag_filter;
+        texture.wrap_s = self.wrap_s;
+        texture.wrap_t = self.wrap_t;
+        texture.wrap_r = self.wrap_r;
+        texture.anisotropy = self.max_anisotropy;
+        texture.lod_bias = self.lod_bias;
+        texture.min_lod = self.min_lod;
+        texture.max_lod = self.max_lod;
+    }
+}
+
+impl Default for TextureSampler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Asynchronous texture loading system
+pub struct AsyncTextureLoader {
+    /// Sender for texture load requests
+    request_sender: Sender<TextureLoadRequest>,
+    /// Receiver for loaded textures
+    result_receiver: Receiver<TextureLoadResult>,
+    /// Number of worker threads
+    worker_count: usize,
+}
+
+/// Texture load request
+#[derive(Clone)]
+struct TextureLoadRequest {
+    /// Texture ID
+    id: u64,
+    /// GPU memory offset
+    offset: u32,
+    /// Texture descriptor
+    descriptor: Texture,
+}
+
+/// Texture load result
+#[derive(Clone)]
+struct TextureLoadResult {
+    /// Texture ID
+    id: u64,
+    /// GPU memory offset
+    offset: u32,
+    /// Texture descriptor
+    descriptor: Texture,
+    /// Loaded texture data
+    data: Vec<u8>,
+    /// Whether loading succeeded
+    success: bool,
+}
+
+impl AsyncTextureLoader {
+    /// Create a new async texture loader
+    pub fn new(worker_count: usize) -> Self {
+        let (request_sender, request_receiver) = channel::<TextureLoadRequest>();
+        let (result_sender, result_receiver) = channel::<TextureLoadResult>();
+
+        // Spawn worker threads using shared Arc for receiver
+        use std::sync::{Arc, Mutex};
+        let shared_rx = Arc::new(Mutex::new(request_receiver));
+
+        for _ in 0..worker_count {
+            let rx = Arc::clone(&shared_rx);
+            let tx = result_sender.clone();
+
+            thread::spawn(move || {
+                loop {
+                    let request = {
+                        let locked = rx.lock().unwrap();
+                        locked.recv()
+                    };
+
+                    match request {
+                        Ok(req) => {
+                            // Simulate texture loading
+                            let size = req.descriptor.byte_size() as usize;
+                            let data = vec![0u8; size]; // In real implementation, would read from memory
+                            
+                            let result = TextureLoadResult {
+                                id: req.id,
+                                offset: req.offset,
+                                descriptor: req.descriptor,
+                                data,
+                                success: true,
+                            };
+
+                            if tx.send(result).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
+
+        Self {
+            request_sender,
+            result_receiver,
+            worker_count,
+        }
+    }
+
+    /// Request to load a texture asynchronously
+    pub fn load_async(&self, id: u64, offset: u32, descriptor: Texture) -> Result<(), String> {
+        let request = TextureLoadRequest {
+            id,
+            offset,
+            descriptor,
+        };
+
+        self.request_sender
+            .send(request)
+            .map_err(|e| format!("Failed to send load request: {}", e))
+    }
+
+    /// Check for completed texture loads
+    pub fn poll_completed(&self) -> Vec<(u64, u32, Texture, Vec<u8>)> {
+        let mut results = Vec::new();
+        
+        while let Ok(result) = self.result_receiver.try_recv() {
+            if result.success {
+                results.push((result.id, result.offset, result.descriptor, result.data));
+            }
+        }
+
+        results
+    }
+
+    /// Get number of worker threads
+    pub fn worker_count(&self) -> usize {
+        self.worker_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +514,23 @@ mod tests {
 
         assert!(cache.get(0x1000, 3).is_some());
         assert!(cache.get(0x2000, 3).is_none());
+    }
+
+    #[test]
+    fn test_texture_anisotropy() {
+        let mut tex = Texture::new();
+        tex.anisotropy = 16.0;
+        assert_eq!(tex.anisotropy, 16.0);
+    }
+
+    #[test]
+    fn test_texture_lod() {
+        let mut tex = Texture::new();
+        tex.lod_bias = 0.5;
+        tex.min_lod = 0.0;
+        tex.max_lod = 10.0;
+        assert_eq!(tex.lod_bias, 0.5);
+        assert_eq!(tex.min_lod, 0.0);
+        assert_eq!(tex.max_lod, 10.0);
     }
 }

@@ -144,6 +144,163 @@ impl VertexCache {
     }
 }
 
+/// Post-transform vertex cache for optimization
+pub struct PostTransformVertexCache {
+    /// Cache entries (index -> vertex data hash)
+    entries: Vec<Option<u64>>,
+    /// Cache size (typically 16-32 for hardware)
+    size: usize,
+    /// Next insertion position (FIFO)
+    next_pos: usize,
+    /// Cache hits counter
+    hits: usize,
+    /// Cache misses counter
+    misses: usize,
+}
+
+impl PostTransformVertexCache {
+    /// Create a new post-transform vertex cache
+    pub fn new(size: usize) -> Self {
+        Self {
+            entries: vec![None; size],
+            size,
+            next_pos: 0,
+            hits: 0,
+            misses: 0,
+        }
+    }
+
+    /// Check if vertex is in cache
+    pub fn lookup(&mut self, vertex_hash: u64) -> bool {
+        if self.entries.iter().any(|entry| entry == &Some(vertex_hash)) {
+            self.hits += 1;
+            true
+        } else {
+            self.misses += 1;
+            false
+        }
+    }
+
+    /// Insert vertex into cache
+    pub fn insert(&mut self, vertex_hash: u64) {
+        self.entries[self.next_pos] = Some(vertex_hash);
+        self.next_pos = (self.next_pos + 1) % self.size;
+    }
+
+    /// Clear the cache
+    pub fn clear(&mut self) {
+        self.entries.fill(None);
+        self.next_pos = 0;
+    }
+
+    /// Get cache statistics
+    pub fn stats(&self) -> (usize, usize, f32) {
+        let total = self.hits + self.misses;
+        let hit_rate = if total > 0 {
+            self.hits as f32 / total as f32
+        } else {
+            0.0
+        };
+        (self.hits, self.misses, hit_rate)
+    }
+
+    /// Reset statistics
+    pub fn reset_stats(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+    }
+}
+
+/// Optimized vertex processor with batching and caching
+pub struct VertexProcessor {
+    /// Post-transform vertex cache
+    pt_cache: PostTransformVertexCache,
+    /// Vertex attribute descriptors
+    attributes: Vec<VertexAttribute>,
+    /// Batch size for processing
+    batch_size: usize,
+}
+
+impl VertexProcessor {
+    /// Create a new vertex processor
+    pub fn new(cache_size: usize, batch_size: usize) -> Self {
+        Self {
+            pt_cache: PostTransformVertexCache::new(cache_size),
+            attributes: Vec::new(),
+            batch_size,
+        }
+    }
+
+    /// Set vertex attributes
+    pub fn set_attributes(&mut self, attributes: Vec<VertexAttribute>) {
+        self.attributes = attributes;
+    }
+
+    /// Process vertex data with optimization
+    pub fn process_vertices(&mut self, indices: &[u32], vertex_data: &[u8]) -> Vec<u8> {
+        let mut processed = Vec::new();
+        
+        for &index in indices {
+            let vertex_hash = self.compute_vertex_hash(index, vertex_data);
+            
+            if !self.pt_cache.lookup(vertex_hash) {
+                // Cache miss - need to process vertex
+                let vertex = self.extract_vertex(index, vertex_data);
+                processed.extend_from_slice(&vertex);
+                self.pt_cache.insert(vertex_hash);
+            } else {
+                // Cache hit - reuse transformed vertex
+                // In a real implementation, we'd fetch the transformed vertex
+                let vertex = self.extract_vertex(index, vertex_data);
+                processed.extend_from_slice(&vertex);
+            }
+        }
+
+        processed
+    }
+
+    /// Compute hash for a vertex
+    fn compute_vertex_hash(&self, index: u32, _vertex_data: &[u8]) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        index.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Extract vertex data at index
+    fn extract_vertex(&self, index: u32, vertex_data: &[u8]) -> Vec<u8> {
+        let mut vertex = Vec::new();
+        
+        for attr in &self.attributes {
+            let offset = (index * attr.stride as u32 + attr.offset) as usize;
+            let size = attr.byte_size() as usize;
+            
+            if offset + size <= vertex_data.len() {
+                vertex.extend_from_slice(&vertex_data[offset..offset + size]);
+            }
+        }
+
+        vertex
+    }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> (usize, usize, f32) {
+        self.pt_cache.stats()
+    }
+
+    /// Clear caches
+    pub fn clear(&mut self) {
+        self.pt_cache.clear();
+    }
+
+    /// Get batch size
+    pub fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
