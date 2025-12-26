@@ -14,10 +14,10 @@ pub const CELL_RESC_ERROR_LESS_MEMORY: i32 = 0x80210305u32 as i32;
 pub const CELL_RESC_ERROR_GCM_FLIP_QUE_FULL: i32 = 0x80210306u32 as i32;
 
 /// Display mode flags
-pub const CELL_RESC_720x480: u32 = 0x01;
-pub const CELL_RESC_720x576: u32 = 0x02;
-pub const CELL_RESC_1280x720: u32 = 0x04;
-pub const CELL_RESC_1920x1080: u32 = 0x08;
+pub const CELL_RESC_720X480: u32 = 0x01;
+pub const CELL_RESC_720X576: u32 = 0x02;
+pub const CELL_RESC_1280X720: u32 = 0x04;
+pub const CELL_RESC_1920X1080: u32 = 0x08;
 
 /// Palette format
 #[repr(u32)]
@@ -92,7 +92,7 @@ impl Default for CellRescInitConfig {
         Self {
             size: std::mem::size_of::<Self>() as u32,
             resource_policy: 0,
-            display_modes: CELL_RESC_720x480 | CELL_RESC_720x576 | CELL_RESC_1280x720 | CELL_RESC_1920x1080,
+            display_modes: CELL_RESC_720X480 | CELL_RESC_720X576 | CELL_RESC_1280X720 | CELL_RESC_1920X1080,
             interpolation_mode: 0,
             interlace_filter: 0,
         }
@@ -169,7 +169,7 @@ impl RescManager {
             config: CellRescInitConfig::default(),
             src: CellRescSrc::default(),
             dsts: [CellRescDsts::default(); 4],
-            display_mode: CELL_RESC_1280x720,
+            display_mode: CELL_RESC_1280X720,
             buffer_mode: CellRescBufferMode::default(),
             pal_temporal_mode: CellRescPalTemporalMode::default(),
             ratio_mode: CellRescRatioConvertMode::default(),
@@ -256,10 +256,10 @@ impl RescManager {
 
         // Validate mode is one of supported modes
         const VALID_MODES: [u32; 4] = [
-            CELL_RESC_720x480,
-            CELL_RESC_720x576,
-            CELL_RESC_1280x720,
-            CELL_RESC_1920x1080,
+            CELL_RESC_720X480,
+            CELL_RESC_720X576,
+            CELL_RESC_1280X720,
+            CELL_RESC_1920X1080,
         ];
         
         if !VALID_MODES.contains(&mode) {
@@ -357,10 +357,10 @@ impl RescManager {
 
         // Calculate based on display mode
         let (width, height) = match self.display_mode {
-            CELL_RESC_720x480 => (720, 480),
-            CELL_RESC_720x576 => (720, 576),
-            CELL_RESC_1280x720 => (1280, 720),
-            CELL_RESC_1920x1080 => (1920, 1080),
+            CELL_RESC_720X480 => (720, 480),
+            CELL_RESC_720X576 => (720, 576),
+            CELL_RESC_1280X720 => (1280, 720),
+            CELL_RESC_1920X1080 => (1920, 1080),
             _ => (1280, 720),
         };
 
@@ -410,10 +410,10 @@ impl RescManager {
 
         // Get destination dimensions based on display mode
         let (dst_width, dst_height) = match self.display_mode {
-            CELL_RESC_720x480 => (720u32, 480u32),
-            CELL_RESC_720x576 => (720, 576),
-            CELL_RESC_1280x720 => (1280, 720),
-            CELL_RESC_1920x1080 => (1920, 1080),
+            CELL_RESC_720X480 => (720u32, 480u32),
+            CELL_RESC_720X576 => (720, 576),
+            CELL_RESC_1280X720 => (1280, 720),
+            CELL_RESC_1920X1080 => (1920, 1080),
             _ => (1280, 720),
         };
 

@@ -19,6 +19,7 @@ pub const CELL_SYSUTIL_ERROR_DIALOG_ALREADY_OPEN: i32 = 0x80010003u32 as i32;
 pub type SysutilCallback = fn(status: u64, param: u64, userdata: u64);
 
 /// System callback entry
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 struct CallbackEntry {
     func: u32,      // Address of callback function

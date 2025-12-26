@@ -20,6 +20,7 @@ pub const CELL_SPURS_ATTRIBUTE_FLAG_SIGNAL_TO_PPU: u32 = 1;
 pub const CELL_SPURS_MAX_PRIORITY: u32 = 16;
 
 /// SPURS workload state
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkloadState {
     Idle,
@@ -29,6 +30,7 @@ enum WorkloadState {
 }
 
 /// SPURS task queue entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct Task {
     /// Task ID
@@ -44,6 +46,7 @@ struct Task {
 }
 
 /// Task queue
+#[allow(dead_code)]
 #[derive(Debug)]
 struct TaskQueue {
     /// Queue ID
@@ -101,6 +104,7 @@ impl TaskQueue {
 }
 
 /// Job chain entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct JobChain {
     /// Chain ID
@@ -147,6 +151,7 @@ impl JobChain {
 }
 
 /// Taskset for managing multiple tasks
+#[allow(dead_code)]
 #[derive(Debug)]
 struct Taskset {
     /// Taskset ID
@@ -196,6 +201,7 @@ impl Taskset {
 }
 
 /// Event flag for synchronization
+#[allow(dead_code)]
 #[derive(Debug)]
 struct EventFlag {
     /// Flag ID
@@ -231,6 +237,7 @@ impl EventFlag {
 }
 
 /// Barrier for synchronization
+#[allow(dead_code)]
 #[derive(Debug)]
 struct Barrier {
     /// Barrier ID
@@ -266,6 +273,7 @@ impl Barrier {
 }
 
 /// SPURS workload
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct Workload {
     /// Workload ID

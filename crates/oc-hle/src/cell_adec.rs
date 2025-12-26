@@ -100,6 +100,7 @@ pub const CELL_ADEC_ERROR_EMPTY: i32 = 0x80610a04u32 as i32;
 pub const CELL_ADEC_ERROR_FATAL: i32 = 0x80610a05u32 as i32;
 
 /// Audio decoder entry
+#[allow(dead_code)]
 #[derive(Debug)]
 struct AdecEntry {
     codec_type: u32,
@@ -111,6 +112,7 @@ struct AdecEntry {
 }
 
 /// Audio decoder backend implementation
+#[allow(dead_code)]
 #[derive(Debug)]
 struct AudioDecoderBackend {
     /// Codec type

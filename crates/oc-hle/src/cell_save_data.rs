@@ -119,6 +119,7 @@ pub struct CellSaveDataSetBuf {
 }
 
 /// Save data entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct SaveDataEntry {
     /// Directory name

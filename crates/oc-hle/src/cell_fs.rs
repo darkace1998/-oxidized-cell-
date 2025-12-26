@@ -668,13 +668,12 @@ impl FsManager {
     /// # Returns
     /// * 0 on success, error code on failure
     pub fn aio_cancel(&mut self, request_id: AioRequestId) -> i32 {
-        if let Some(mut request) = self.aio_requests.remove(&request_id) {
+        if let Some(request) = self.aio_requests.remove(&request_id) {
             debug!("FsManager::aio_cancel: request_id={}", request_id);
             
-            if !request.completed {
-                request.completed = true;
-                request.result = Err(0x80010045u32 as i32); // CELL_FS_ERROR_ECANCELED
-            }
+            // Note: Request is removed and discarded; in a real implementation,
+            // we would signal cancellation to the async I/O thread
+            let _ = request; // Acknowledge we received the request
             
             0 // CELL_OK
         } else {

@@ -55,6 +55,7 @@ pub enum CellSslVerifyResult {
 }
 
 /// Certificate entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct CertEntry {
     cert_type: CellSslCertType,
@@ -83,6 +84,7 @@ impl CertEntry {
 }
 
 /// SSL context entry
+#[allow(dead_code)]
 #[derive(Debug)]
 struct SslContextEntry {
     verify_mode: u32,

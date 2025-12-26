@@ -45,6 +45,7 @@ pub enum CellHttpVersion {
 }
 
 /// Transaction state
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TransactionState {
     Created,
@@ -124,8 +125,8 @@ impl HttpBackend {
         &self,
         method: &CellHttpMethod,
         url: &str,
-        headers: &[(String, String)],
-        body: &[u8],
+        _headers: &[(String, String)],
+        _body: &[u8],
     ) -> Result<HttpResponse, i32> {
         trace!("HttpBackend::send_request: {:?} {}", method, url);
 
@@ -181,6 +182,7 @@ impl HttpBackend {
 }
 
 /// HTTP response
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct HttpResponse {
     status_code: u32,
@@ -190,6 +192,7 @@ struct HttpResponse {
 }
 
 /// Client entry
+#[allow(dead_code)]
 #[derive(Debug)]
 struct ClientEntry {
     transactions: HashMap<HttpTransactionId, TransactionEntry>,
@@ -380,7 +383,7 @@ impl HttpManager {
     }
 
     /// Receive HTTP response
-    pub fn recv_response(&mut self, client_id: HttpClientId, transaction_id: HttpTransactionId, buffer_size: u64) -> Result<u64, i32> {
+    pub fn recv_response(&mut self, client_id: HttpClientId, transaction_id: HttpTransactionId, _buffer_size: u64) -> Result<u64, i32> {
         if !self.is_initialized {
             return Err(CELL_HTTP_ERROR_NOT_INITIALIZED);
         }

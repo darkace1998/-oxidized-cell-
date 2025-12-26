@@ -44,6 +44,7 @@ struct JpegDecoder {
 }
 
 /// Progressive scan information
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct ProgressiveScan {
     /// Component selector
@@ -234,6 +235,7 @@ impl JpegDecoder {
 }
 
 /// JPEG decoder entry for main handle
+#[allow(dead_code)]
 #[derive(Debug)]
 struct JpgDecEntry {
     /// Main handle ID
@@ -247,8 +249,9 @@ struct JpgDecEntry {
 }
 
 /// JPEG decoder sub entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
-struct JpgSubDecEntry {
+pub struct JpgSubDecEntry {
     /// Sub handle ID
     id: u32,
     /// Image width

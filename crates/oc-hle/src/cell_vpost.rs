@@ -93,6 +93,7 @@ pub struct CellVpostCtrlParam {
 }
 
 /// Video post-processor entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct VpostEntry {
     /// Input picture format
@@ -390,7 +391,7 @@ impl ColorConverter {
             CellVpostColorMatrix::Bt709 => (0.2126, 0.0722), // BT.709/HDTV
         };
         
-        let kg = 1.0 - kr - kb;
+        let _kg = 1.0 - kr - kb;
         
         // TODO: Actual YUV to RGB conversion
         // In a real implementation:
@@ -428,7 +429,7 @@ impl ColorConverter {
             CellVpostColorMatrix::Bt709 => (0.2126, 0.0722),
         };
         
-        let kg = 1.0 - kr - kb;
+        let _kg = 1.0 - kr - kb;
         
         // TODO: Actual RGB to YUV conversion
         // In a real implementation:
@@ -745,10 +746,10 @@ pub fn cell_vpost_close(handle: VpostHandle) -> i32 {
 /// cellVpostExec - Execute video post-processing
 pub fn cell_vpost_exec(
     handle: VpostHandle,
-    in_buffer: *const u8,
+    _in_buffer: *const u8,
     ctrl_param: *const CellVpostCtrlParam,
-    out_buffer: *mut u8,
-    pic_info: *mut CellVpostPictureInfo,
+    _out_buffer: *mut u8,
+    _pic_info: *mut CellVpostPictureInfo,
 ) -> i32 {
     trace!("cellVpostExec called");
 

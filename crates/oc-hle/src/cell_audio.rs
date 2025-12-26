@@ -35,6 +35,7 @@ pub enum AudioPortState {
 }
 
 /// Audio port
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct AudioPort {
     /// Port state
@@ -126,7 +127,7 @@ impl AudioManager {
         &mut self,
         num_channels: u32,
         num_blocks: u32,
-        attr: u32,
+        _attr: u32,
         level: f32,
     ) -> Result<u32, i32> {
         if !self.initialized {

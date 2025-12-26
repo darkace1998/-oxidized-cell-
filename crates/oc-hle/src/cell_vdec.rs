@@ -101,6 +101,7 @@ pub const CELL_VDEC_ERROR_EMPTY: i32 = 0x80610904u32 as i32;
 pub const CELL_VDEC_ERROR_FATAL: i32 = 0x80610905u32 as i32;
 
 /// Video decoder entry
+#[allow(dead_code)]
 #[derive(Debug)]
 struct VdecEntry {
     codec_type: u32,
@@ -135,6 +136,7 @@ pub enum Mpeg2Profile {
 }
 
 /// Video decoder backend implementation
+#[allow(dead_code)]
 #[derive(Debug)]
 struct VideoDecoderBackend {
     /// Codec type (AVC, MPEG-2, etc.)

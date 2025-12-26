@@ -101,6 +101,7 @@ impl Default for FontData {
 }
 
 /// Font entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct FontEntry {
     /// Font ID
@@ -186,6 +187,7 @@ impl RenderSurface {
 }
 
 /// Renderer entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct RendererEntry {
     /// Renderer ID

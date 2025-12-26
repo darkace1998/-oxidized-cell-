@@ -158,6 +158,7 @@ impl Default for CellNetCtlNatInfo {
 pub type NetCtlHandler = u32;
 
 /// Handler entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct HandlerEntry {
     handler: NetCtlHandler,
@@ -165,6 +166,7 @@ struct HandlerEntry {
 }
 
 /// Network backend that interfaces with system network
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct NetworkBackend {
     /// Whether network is available
@@ -176,6 +178,7 @@ struct NetworkBackend {
 }
 
 /// Network interface information
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct NetworkInterface {
     /// Interface name
@@ -384,7 +387,7 @@ impl NetCtlManager {
     }
 
     /// Get network information by code
-    pub fn get_info(&self, code: CellNetCtlInfoCode) -> Result<CellNetCtlInfo, i32> {
+    pub fn get_info(&self, _code: CellNetCtlInfoCode) -> Result<CellNetCtlInfo, i32> {
         if !self.is_initialized {
             return Err(CELL_NET_CTL_ERROR_NOT_INITIALIZED);
         }

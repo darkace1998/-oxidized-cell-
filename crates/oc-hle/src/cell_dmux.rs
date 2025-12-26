@@ -95,6 +95,7 @@ pub struct CellDmuxAuInfo {
 }
 
 /// Elementary stream entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct EsEntry {
     es_attr: CellDmuxEsAttr,
@@ -286,6 +287,7 @@ impl ContainerParser {
 }
 
 /// Demux entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct DmuxEntry {
     dmux_type: CellDmuxType,

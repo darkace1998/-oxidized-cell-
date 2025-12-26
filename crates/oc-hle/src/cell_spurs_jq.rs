@@ -100,6 +100,7 @@ impl Default for CellSpursJobQueueAttribute {
 }
 
 /// Internal job entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct JobEntry {
     /// Job descriptor
@@ -113,6 +114,7 @@ struct JobEntry {
 }
 
 /// Job queue entry
+#[allow(dead_code)]
 #[derive(Debug)]
 struct JobQueueEntry {
     /// Queue ID

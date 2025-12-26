@@ -31,8 +31,9 @@ pub const SRE_ERROR_NO_MEMORY: i32 = -2;
 pub const SRE_ERROR_INVALID_PARAMETER: i32 = -3;
 
 /// Compiled pattern entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
-struct PatternEntry {
+pub struct PatternEntry {
     /// Pattern ID
     id: u32,
     /// Pattern string

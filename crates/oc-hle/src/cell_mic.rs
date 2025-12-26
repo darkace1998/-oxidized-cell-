@@ -430,6 +430,7 @@ impl MicManager {
     /// 
     /// # Arguments
     /// * `device_id` - Device ID
+    #[allow(dead_code)]
     fn backend_start_capture(&mut self, device_id: u32) -> i32 {
         trace!("MicManager::backend_start_capture: device_id={}", device_id);
 
@@ -446,6 +447,7 @@ impl MicManager {
     /// 
     /// # Arguments
     /// * `device_id` - Device ID
+    #[allow(dead_code)]
     fn backend_stop_capture(&mut self, device_id: u32) -> i32 {
         trace!("MicManager::backend_stop_capture: device_id={}", device_id);
 
@@ -462,6 +464,7 @@ impl MicManager {
     /// # Arguments
     /// * `device_id` - Device ID
     /// * `buffer` - Buffer to fill with captured audio
+    #[allow(dead_code)]
     fn backend_read_data(&self, device_id: u32, _buffer: &mut [u8]) -> Result<u32, i32> {
         trace!("MicManager::backend_read_data: device_id={}", device_id);
 

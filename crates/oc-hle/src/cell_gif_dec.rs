@@ -85,6 +85,7 @@ pub enum GifDisposalMethod {
 }
 
 /// GIF frame information
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct GifFrame {
     /// Frame delay in centiseconds (1/100s)
@@ -104,6 +105,7 @@ struct GifFrame {
 }
 
 /// GIF decoder backend with animation support
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct GifDecoder {
     /// Global width
@@ -122,6 +124,7 @@ struct GifDecoder {
     loop_count: u16,
 }
 
+#[allow(dead_code)]
 impl GifDecoder {
     fn new() -> Self {
         Self {
@@ -297,6 +300,7 @@ impl GifDecoder {
 }
 
 /// Entry for a main GIF decoder handle
+#[allow(dead_code)]
 struct GifDecEntry {
     main_handle: u32,
     sub_handles: HashMap<u32, GifSubDecEntry>,
@@ -305,6 +309,7 @@ struct GifDecEntry {
 }
 
 /// Entry for a GIF sub decoder handle
+#[allow(dead_code)]
 struct GifSubDecEntry {
     sub_handle: u32,
     info: CellGifDecOutParam,

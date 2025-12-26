@@ -134,6 +134,7 @@ struct PngDecoder {
     interlace: u8,
 }
 
+#[allow(dead_code)]
 impl PngDecoder {
     /// Create a new PNG decoder
     fn new() -> Self {
@@ -283,6 +284,7 @@ impl PngDecoder {
 }
 
 /// PNG decoder entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct PngDecEntry {
     /// Main handle ID
@@ -296,6 +298,7 @@ struct PngDecEntry {
 }
 
 /// PNG sub decoder entry
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct PngSubDecEntry {
     /// Sub handle ID
