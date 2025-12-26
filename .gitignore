@@ -29,6 +29,13 @@ Thumbs.db
 # Test ROMs (must not be committed)
 tests/roms/
 
+# Game ISOs and disc images (never commit these)
+*.iso
+*.ISO
+*.dec.iso
+*.pkg
+*.PKG
+
 # Shader cache
 cache/
 

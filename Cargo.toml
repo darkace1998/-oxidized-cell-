@@ -17,9 +17,14 @@ oc-integration = { path = "crates/oc-integration" }
 oc-audio = { path = "crates/oc-audio" }
 oc-loader = { path = "crates/oc-loader" }
 oc-memory = { path = "crates/oc-memory" }
+oc-vfs = { path = "crates/oc-vfs" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 eframe = "0.29"
+
+[[example]]
+name = "test_iso_loading"
+path = "examples/test_iso_loading.rs"
 
 [workspace]
 resolver = "2"
