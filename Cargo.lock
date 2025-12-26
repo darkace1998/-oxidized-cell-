@@ -3309,6 +3309,8 @@ dependencies = [
  "oc-audio",
  "oc-core",
  "oc-integration",
+ "oc-loader",
+ "oc-memory",
  "oc-ui",
  "tracing",
  "tracing-subscriber",
