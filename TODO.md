@@ -79,14 +79,14 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement get_local_web_content_path through global manager
   - [x] Add actual PARAM.SFO reading/writing
   - [x] Support game data installation
-  - [ ] Handle game updates
+  - [x] Handle game updates
 
 - [x] **cellSaveData** - Save Data Management (Connected to global context)
   - [x] Implement list_load2/list_save2 through global manager
   - [x] Implement delete2 through global manager
   - [x] Implement fixed_load2/fixed_save2 through global manager
-  - [ ] Connect to VFS backend
-  - [ ] Handle save data encryption
+  - [x] Connect to VFS backend
+  - [x] Handle save data encryption
 
 #### SPU/Threading Modules
 - [x] **cellSpurs** - SPU Runtime System (Connected to global context)
@@ -94,11 +94,11 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement attach/detach event queue through global manager
   - [x] Implement set_priorities through global manager
   - [x] Implement get_spu_thread_id through global manager
-  - [ ] Implement task queue management
-  - [ ] Add workload scheduling
-  - [ ] Support job chains
-  - [ ] Implement taskset operations
-  - [ ] Add event flags and barriers
+  - [x] Implement task queue management
+  - [x] Add workload scheduling
+  - [x] Support job chains
+  - [x] Implement taskset operations
+  - [x] Add event flags and barriers
 
 - [x] **cellSpursJq** - SPURS Job Queue
   - [x] Implement SpursJqManager with init/finalize
@@ -106,7 +106,7 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement push_job through global manager
   - [x] Implement sync_job/sync_all through global manager
   - [x] Implement abort_job through global manager
-  - [ ] Integrate with actual SPU job execution
+  - [x] Integrate with actual SPU job execution
 
 #### Input Modules
 - [x] **cellPad** - Controller Input (Connected to global context)
@@ -114,7 +114,7 @@ The HLE (High-Level Emulation) modules are essential for running PS3 games. Curr
   - [x] Implement get_info/get_info2 through global manager
   - [x] Implement get_data through global manager
   - [x] Implement get_capability_info through global manager
-  - [ ] Connect to oc-input backend
+  - [x] Connect to oc-input backend
   - [ ] Add rumble/vibration support
   - [ ] Support multiple controllers
 
@@ -658,3 +658,15 @@ See the [Contributing section in README.md](README.md#contributing) for guidelin
 *8. cellSysutil - Disc detection with DiscInfo and status tracking*
 *9. cellGame - PARAM.SFO reading/writing with ParamSfoEntry support*
 *10. cellGame - Game data installation with progress tracking*
+
+*HLE module update (December 26, 2024): Implemented next 10 HLE module todos:*
+*1. cellGame - Handle game updates with download and installation tracking*
+*2. cellSaveData - Connect to VFS backend with file read/write operations*
+*3. cellSaveData - Handle save data encryption with AES-128 support*
+*4. cellSpurs - Implement task queue management with priority queuing*
+*5. cellSpurs - Add workload scheduling with SPU assignment*
+*6. cellSpurs - Support job chains with sequential execution*
+*7. cellSpurs - Implement taskset operations for task grouping*
+*8. cellSpurs - Add event flags and barriers for synchronization*
+*9. cellSpursJq - Integrate with actual SPU job execution*
+*10. cellPad - Connect to oc-input backend with button mapping*

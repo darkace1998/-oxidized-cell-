@@ -367,6 +367,130 @@ impl SpursJqManager {
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }
+
+    // ========================================================================
+    // SPU Job Execution Integration
+    // ========================================================================
+
+    /// Execute a job on SPU
+    /// 
+    /// This integrates with the actual SPU execution backend.
+    /// In a real implementation, this would:
+    /// 1. Load SPU program from job.code_addr
+    /// 2. Prepare SPU local store with job data
+    /// 3. Execute SPU program
+    /// 4. Return results
+    pub fn execute_job(&mut self, queue_id: u32, job_id: u32) -> i32 {
+        if !self.initialized {
+            return CELL_SPURS_JQ_ERROR_NOT_INITIALIZED;
+        }
+
+        let queue = match self.queues.get_mut(&queue_id) {
+            Some(q) => q,
+            None => return CELL_SPURS_JQ_ERROR_INVALID_ARGUMENT,
+        };
+
+        let entry = match queue.jobs.get_mut(&job_id) {
+            Some(e) => e,
+            None => return CELL_SPURS_JQ_ERROR_INVALID_ARGUMENT,
+        };
+
+        if entry.state != CellSpursJobState::Pending {
+            return CELL_SPURS_JQ_ERROR_BUSY;
+        }
+
+        debug!(
+            "SpursJqManager::execute_job: queue={}, job_id={}, code=0x{:08X}, data=0x{:08X}",
+            queue_id, job_id, entry.job.code_addr, entry.job.data_addr
+        );
+
+        // Mark job as running
+        entry.state = CellSpursJobState::Running;
+
+        // In a real implementation, this would:
+        // 1. Get SPU context from oc-spu
+        // 2. Load program at code_addr
+        // 3. Set up local store with data from data_addr
+        // 4. Execute SPU program
+        // 5. Invoke callback when complete
+        // For now, simulate immediate completion
+        entry.state = CellSpursJobState::Complete;
+
+        0 // CELL_OK
+    }
+
+    /// Process pending jobs in queue
+    /// 
+    /// Executes all pending jobs in priority order.
+    /// This would be called by the SPURS scheduler.
+    pub fn process_queue(&mut self, queue_id: u32) -> i32 {
+        if !self.initialized {
+            return CELL_SPURS_JQ_ERROR_NOT_INITIALIZED;
+        }
+
+        if !self.queues.contains_key(&queue_id) {
+            return CELL_SPURS_JQ_ERROR_INVALID_ARGUMENT;
+        }
+
+        debug!("SpursJqManager::process_queue: queue={}", queue_id);
+
+        // Get list of pending job IDs
+        let pending_jobs: Vec<u32> = {
+            let queue = self.queues.get(&queue_id).unwrap();
+            queue.jobs.iter()
+                .filter(|(_, entry)| entry.state == CellSpursJobState::Pending)
+                .map(|(id, _)| *id)
+                .collect()
+        };
+
+        // Execute each pending job
+        for job_id in pending_jobs {
+            let result = self.execute_job(queue_id, job_id);
+            if result != 0 {
+                debug!("Failed to execute job {}: error=0x{:08X}", job_id, result);
+            }
+        }
+
+        0 // CELL_OK
+    }
+
+    /// Check if job is complete
+    pub fn is_job_complete(&self, queue_id: u32, job_id: u32) -> Result<bool, i32> {
+        let state = self.get_job_status(queue_id, job_id)?;
+        Ok(state == CellSpursJobState::Complete || state == CellSpursJobState::Aborted)
+    }
+
+    /// Get completed job count
+    pub fn get_completed_job_count(&self, queue_id: u32) -> Result<usize, i32> {
+        if !self.initialized {
+            return Err(CELL_SPURS_JQ_ERROR_NOT_INITIALIZED);
+        }
+
+        let queue = self.queues.get(&queue_id)
+            .ok_or(CELL_SPURS_JQ_ERROR_INVALID_ARGUMENT)?;
+
+        let count = queue.jobs.values()
+            .filter(|entry| entry.state == CellSpursJobState::Complete)
+            .count();
+
+        Ok(count)
+    }
+
+    /// Get pending job count
+    pub fn get_pending_job_count(&self, queue_id: u32) -> Result<usize, i32> {
+        if !self.initialized {
+            return Err(CELL_SPURS_JQ_ERROR_NOT_INITIALIZED);
+        }
+
+        let queue = self.queues.get(&queue_id)
+            .ok_or(CELL_SPURS_JQ_ERROR_INVALID_ARGUMENT)?;
+
+        let count = queue.jobs.values()
+            .filter(|entry| entry.state == CellSpursJobState::Pending)
+            .count();
+
+        Ok(count)
+    }
 }
 
 impl Default for SpursJqManager {

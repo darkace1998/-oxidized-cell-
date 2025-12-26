@@ -25,6 +25,244 @@ enum WorkloadState {
     Idle,
     Running,
     Ready,
+    Waiting,
+}
+
+/// SPURS task queue entry
+#[derive(Debug, Clone)]
+struct Task {
+    /// Task ID
+    id: u32,
+    /// Task entry point address
+    entry: u32,
+    /// Task argument
+    argument: u64,
+    /// Task priority
+    priority: u8,
+    /// Task state
+    state: WorkloadState,
+}
+
+/// Task queue
+#[derive(Debug)]
+struct TaskQueue {
+    /// Queue ID
+    id: u32,
+    /// Pending tasks (ordered by priority)
+    tasks: Vec<Task>,
+    /// Next task ID
+    next_task_id: u32,
+}
+
+impl TaskQueue {
+    fn new(id: u32) -> Self {
+        Self {
+            id,
+            tasks: Vec::new(),
+            next_task_id: 1,
+        }
+    }
+
+    fn push_task(&mut self, entry: u32, argument: u64, priority: u8) -> u32 {
+        let task_id = self.next_task_id;
+        self.next_task_id += 1;
+
+        let task = Task {
+            id: task_id,
+            entry,
+            argument,
+            priority,
+            state: WorkloadState::Ready,
+        };
+
+        // Insert task in priority order
+        let pos = self.tasks.iter().position(|t| t.priority > priority)
+            .unwrap_or(self.tasks.len());
+        self.tasks.insert(pos, task);
+
+        task_id
+    }
+
+    fn pop_task(&mut self) -> Option<Task> {
+        if !self.tasks.is_empty() {
+            Some(self.tasks.remove(0))
+        } else {
+            None
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+
+    fn task_count(&self) -> usize {
+        self.tasks.len()
+    }
+}
+
+/// Job chain entry
+#[derive(Debug, Clone)]
+struct JobChain {
+    /// Chain ID
+    id: u32,
+    /// Jobs in chain
+    jobs: Vec<u32>,
+    /// Current job index
+    current_index: usize,
+    /// Chain complete flag
+    complete: bool,
+}
+
+impl JobChain {
+    fn new(id: u32, jobs: Vec<u32>) -> Self {
+        Self {
+            id,
+            jobs,
+            current_index: 0,
+            complete: false,
+        }
+    }
+
+    fn get_current_job(&self) -> Option<u32> {
+        if self.current_index < self.jobs.len() {
+            Some(self.jobs[self.current_index])
+        } else {
+            None
+        }
+    }
+
+    fn advance(&mut self) -> bool {
+        self.current_index += 1;
+        if self.current_index >= self.jobs.len() {
+            self.complete = true;
+            false
+        } else {
+            true
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+/// Taskset for managing multiple tasks
+#[derive(Debug)]
+struct Taskset {
+    /// Taskset ID
+    id: u32,
+    /// Tasks in set
+    tasks: Vec<u32>,
+    /// Completed tasks
+    completed: Vec<u32>,
+    /// Taskset enabled
+    enabled: bool,
+}
+
+impl Taskset {
+    fn new(id: u32) -> Self {
+        Self {
+            id,
+            tasks: Vec::new(),
+            completed: Vec::new(),
+            enabled: true,
+        }
+    }
+
+    fn add_task(&mut self, task_id: u32) {
+        if !self.tasks.contains(&task_id) {
+            self.tasks.push(task_id);
+        }
+    }
+
+    fn remove_task(&mut self, task_id: u32) {
+        self.tasks.retain(|&t| t != task_id);
+        self.completed.retain(|&t| t != task_id);
+    }
+
+    fn mark_complete(&mut self, task_id: u32) {
+        if !self.completed.contains(&task_id) {
+            self.completed.push(task_id);
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.enabled && self.completed.len() == self.tasks.len()
+    }
+
+    fn task_count(&self) -> usize {
+        self.tasks.len()
+    }
+}
+
+/// Event flag for synchronization
+#[derive(Debug)]
+struct EventFlag {
+    /// Flag ID
+    id: u32,
+    /// Flag pattern
+    pattern: u64,
+    /// Mode (AND/OR)
+    mode: u32,
+}
+
+impl EventFlag {
+    fn new(id: u32, pattern: u64, mode: u32) -> Self {
+        Self { id, pattern, mode }
+    }
+
+    fn set(&mut self, bits: u64) {
+        self.pattern |= bits;
+    }
+
+    fn clear(&mut self, bits: u64) {
+        self.pattern &= !bits;
+    }
+
+    fn test(&self, bits: u64, mode: u32) -> bool {
+        if mode == 0 {
+            // AND mode: all bits must be set
+            (self.pattern & bits) == bits
+        } else {
+            // OR mode: any bit must be set
+            (self.pattern & bits) != 0
+        }
+    }
+}
+
+/// Barrier for synchronization
+#[derive(Debug)]
+struct Barrier {
+    /// Barrier ID
+    id: u32,
+    /// Total count required
+    total_count: u32,
+    /// Current count
+    current_count: u32,
+}
+
+impl Barrier {
+    fn new(id: u32, total_count: u32) -> Self {
+        Self {
+            id,
+            total_count,
+            current_count: 0,
+        }
+    }
+
+    fn wait(&mut self) -> bool {
+        self.current_count += 1;
+        if self.current_count >= self.total_count {
+            self.current_count = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn reset(&mut self) {
+        self.current_count = 0;
+    }
 }
 
 /// SPURS workload
@@ -56,6 +294,26 @@ pub struct SpursManager {
     event_queues: HashMap<u32, u32>, // port -> queue_id
     /// SPU thread IDs
     spu_thread_ids: Vec<u32>,
+    /// Task queues
+    task_queues: HashMap<u32, TaskQueue>,
+    /// Next task queue ID
+    next_queue_id: u32,
+    /// Job chains
+    job_chains: HashMap<u32, JobChain>,
+    /// Next job chain ID
+    next_chain_id: u32,
+    /// Tasksets
+    tasksets: HashMap<u32, Taskset>,
+    /// Next taskset ID
+    next_taskset_id: u32,
+    /// Event flags
+    event_flags: HashMap<u32, EventFlag>,
+    /// Next event flag ID
+    next_event_flag_id: u32,
+    /// Barriers
+    barriers: HashMap<u32, Barrier>,
+    /// Next barrier ID
+    next_barrier_id: u32,
 }
 
 impl SpursManager {
@@ -70,6 +328,16 @@ impl SpursManager {
             workloads: HashMap::new(),
             event_queues: HashMap::new(),
             spu_thread_ids: Vec::new(),
+            task_queues: HashMap::new(),
+            next_queue_id: 1,
+            job_chains: HashMap::new(),
+            next_chain_id: 1,
+            tasksets: HashMap::new(),
+            next_taskset_id: 1,
+            event_flags: HashMap::new(),
+            next_event_flag_id: 1,
+            barriers: HashMap::new(),
+            next_barrier_id: 1,
         }
     }
 
@@ -123,6 +391,11 @@ impl SpursManager {
         self.workloads.clear();
         self.event_queues.clear();
         self.spu_thread_ids.clear();
+        self.task_queues.clear();
+        self.job_chains.clear();
+        self.tasksets.clear();
+        self.event_flags.clear();
+        self.barriers.clear();
 
         // TODO: Destroy SPU thread group
         // TODO: Clean up resources
@@ -228,6 +501,381 @@ impl SpursManager {
     /// Get number of attached event queues
     pub fn get_event_queue_count(&self) -> usize {
         self.event_queues.len()
+    }
+
+    // ========================================================================
+    // Task Queue Management
+    // ========================================================================
+
+    /// Create a task queue
+    pub fn create_task_queue(&mut self) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let queue_id = self.next_queue_id;
+        self.next_queue_id += 1;
+
+        debug!("SpursManager::create_task_queue: id={}", queue_id);
+
+        self.task_queues.insert(queue_id, TaskQueue::new(queue_id));
+
+        Ok(queue_id)
+    }
+
+    /// Destroy a task queue
+    pub fn destroy_task_queue(&mut self, queue_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        if self.task_queues.remove(&queue_id).is_some() {
+            debug!("SpursManager::destroy_task_queue: id={}", queue_id);
+            0 // CELL_OK
+        } else {
+            0x80410802u32 as i32 // CELL_SPURS_ERROR_INVALID_ARGUMENT
+        }
+    }
+
+    /// Push a task to queue
+    pub fn push_task(&mut self, queue_id: u32, entry: u32, argument: u64, priority: u8) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let queue = self.task_queues.get_mut(&queue_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        let task_id = queue.push_task(entry, argument, priority);
+
+        trace!("SpursManager::push_task: queue={}, task={}", queue_id, task_id);
+
+        Ok(task_id)
+    }
+
+    /// Pop a task from queue
+    pub fn pop_task(&mut self, queue_id: u32) -> Result<Option<u32>, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let queue = self.task_queues.get_mut(&queue_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(queue.pop_task().map(|t| t.id))
+    }
+
+    /// Get task queue count
+    pub fn get_task_queue_count(&self) -> usize {
+        self.task_queues.len()
+    }
+
+    // ========================================================================
+    // Workload Scheduling
+    // ========================================================================
+
+    /// Schedule workload on SPU
+    pub fn schedule_workload(&mut self, wid: u32, spu_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        if wid >= CELL_SPURS_MAX_WORKLOAD as u32 || spu_id >= self.num_spus {
+            return 0x80410802u32 as i32; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+        }
+
+        debug!("SpursManager::schedule_workload: wid={}, spu={}", wid, spu_id);
+
+        // Update workload state
+        if let Some(workload) = self.workloads.get_mut(&wid) {
+            workload.state = WorkloadState::Running;
+        }
+
+        // TODO: Actually schedule workload on SPU
+
+        0 // CELL_OK
+    }
+
+    /// Unschedule workload
+    pub fn unschedule_workload(&mut self, wid: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        if wid >= CELL_SPURS_MAX_WORKLOAD as u32 {
+            return 0x80410802u32 as i32; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+        }
+
+        debug!("SpursManager::unschedule_workload: wid={}", wid);
+
+        // Update workload state
+        if let Some(workload) = self.workloads.get_mut(&wid) {
+            workload.state = WorkloadState::Idle;
+        }
+
+        0 // CELL_OK
+    }
+
+    // ========================================================================
+    // Job Chains
+    // ========================================================================
+
+    /// Create a job chain
+    pub fn create_job_chain(&mut self, jobs: Vec<u32>) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let chain_id = self.next_chain_id;
+        self.next_chain_id += 1;
+
+        debug!("SpursManager::create_job_chain: id={}, jobs={}", chain_id, jobs.len());
+
+        self.job_chains.insert(chain_id, JobChain::new(chain_id, jobs));
+
+        Ok(chain_id)
+    }
+
+    /// Get current job in chain
+    pub fn get_chain_current_job(&self, chain_id: u32) -> Result<Option<u32>, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let chain = self.job_chains.get(&chain_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(chain.get_current_job())
+    }
+
+    /// Advance job chain to next job
+    pub fn advance_job_chain(&mut self, chain_id: u32) -> Result<bool, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let chain = self.job_chains.get_mut(&chain_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(chain.advance())
+    }
+
+    /// Check if job chain is complete
+    pub fn is_chain_complete(&self, chain_id: u32) -> Result<bool, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let chain = self.job_chains.get(&chain_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(chain.is_complete())
+    }
+
+    /// Get job chain count
+    pub fn get_job_chain_count(&self) -> usize {
+        self.job_chains.len()
+    }
+
+    // ========================================================================
+    // Taskset Operations
+    // ========================================================================
+
+    /// Create a taskset
+    pub fn create_taskset(&mut self) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let taskset_id = self.next_taskset_id;
+        self.next_taskset_id += 1;
+
+        debug!("SpursManager::create_taskset: id={}", taskset_id);
+
+        self.tasksets.insert(taskset_id, Taskset::new(taskset_id));
+
+        Ok(taskset_id)
+    }
+
+    /// Add task to taskset
+    pub fn taskset_add_task(&mut self, taskset_id: u32, task_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let taskset = self.tasksets.get_mut(&taskset_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        taskset.add_task(task_id);
+
+        trace!("SpursManager::taskset_add_task: taskset={}, task={}", taskset_id, task_id);
+
+        0 // CELL_OK
+    }
+
+    /// Remove task from taskset
+    pub fn taskset_remove_task(&mut self, taskset_id: u32, task_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let taskset = self.tasksets.get_mut(&taskset_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        taskset.remove_task(task_id);
+
+        0 // CELL_OK
+    }
+
+    /// Mark task complete in taskset
+    pub fn taskset_mark_complete(&mut self, taskset_id: u32, task_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let taskset = self.tasksets.get_mut(&taskset_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        taskset.mark_complete(task_id);
+
+        0 // CELL_OK
+    }
+
+    /// Check if taskset is complete
+    pub fn is_taskset_complete(&self, taskset_id: u32) -> Result<bool, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let taskset = self.tasksets.get(&taskset_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(taskset.is_complete())
+    }
+
+    /// Get taskset count
+    pub fn get_taskset_count(&self) -> usize {
+        self.tasksets.len()
+    }
+
+    // ========================================================================
+    // Event Flags and Barriers
+    // ========================================================================
+
+    /// Create an event flag
+    pub fn create_event_flag(&mut self, pattern: u64, mode: u32) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let flag_id = self.next_event_flag_id;
+        self.next_event_flag_id += 1;
+
+        debug!("SpursManager::create_event_flag: id={}, pattern=0x{:X}", flag_id, pattern);
+
+        self.event_flags.insert(flag_id, EventFlag::new(flag_id, pattern, mode));
+
+        Ok(flag_id)
+    }
+
+    /// Set event flag bits
+    pub fn event_flag_set(&mut self, flag_id: u32, bits: u64) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let flag = self.event_flags.get_mut(&flag_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        flag.set(bits);
+
+        trace!("SpursManager::event_flag_set: flag={}, bits=0x{:X}", flag_id, bits);
+
+        0 // CELL_OK
+    }
+
+    /// Clear event flag bits
+    pub fn event_flag_clear(&mut self, flag_id: u32, bits: u64) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let flag = self.event_flags.get_mut(&flag_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        flag.clear(bits);
+
+        0 // CELL_OK
+    }
+
+    /// Test event flag
+    pub fn event_flag_test(&self, flag_id: u32, bits: u64, mode: u32) -> Result<bool, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let flag = self.event_flags.get(&flag_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(flag.test(bits, mode))
+    }
+
+    /// Get event flag count
+    pub fn get_event_flag_count(&self) -> usize {
+        self.event_flags.len()
+    }
+
+    /// Create a barrier
+    pub fn create_barrier(&mut self, total_count: u32) -> Result<u32, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let barrier_id = self.next_barrier_id;
+        self.next_barrier_id += 1;
+
+        debug!("SpursManager::create_barrier: id={}, count={}", barrier_id, total_count);
+
+        self.barriers.insert(barrier_id, Barrier::new(barrier_id, total_count));
+
+        Ok(barrier_id)
+    }
+
+    /// Wait on barrier
+    pub fn barrier_wait(&mut self, barrier_id: u32) -> Result<bool, i32> {
+        if !self.initialized {
+            return Err(0x80410803u32 as i32); // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let barrier = self.barriers.get_mut(&barrier_id)
+            .ok_or(0x80410802u32 as i32)?; // CELL_SPURS_ERROR_INVALID_ARGUMENT
+
+        Ok(barrier.wait())
+    }
+
+    /// Reset barrier
+    pub fn barrier_reset(&mut self, barrier_id: u32) -> i32 {
+        if !self.initialized {
+            return 0x80410803u32 as i32; // CELL_SPURS_ERROR_NOT_INITIALIZED
+        }
+
+        let barrier = self.barriers.get_mut(&barrier_id)
+            .ok_or(0x80410802u32 as i32)
+            .unwrap();
+
+        barrier.reset();
+
+        0 // CELL_OK
+    }
+
+    /// Get barrier count
+    pub fn get_barrier_count(&self) -> usize {
+        self.barriers.len()
     }
 }
 

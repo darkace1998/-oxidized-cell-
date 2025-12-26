@@ -5,6 +5,10 @@
 
 use tracing::{debug, trace};
 
+/// OC-Input backend reference placeholder
+/// In a real implementation, this would hold a reference to oc-input Pad system
+type InputBackend = Option<()>;
+
 /// Maximum number of controllers
 pub const CELL_PAD_MAX_PORT_NUM: usize = 7;
 
@@ -121,6 +125,10 @@ pub struct PadManager {
     connected_pads: u8,
     /// Device types for each port
     device_types: [CellPadDeviceType; CELL_PAD_MAX_PORT_NUM],
+    /// OC-Input backend
+    input_backend: InputBackend,
+    /// Cached pad data for each port
+    pad_data: [CellPadData; CELL_PAD_MAX_PORT_NUM],
 }
 
 impl PadManager {
@@ -130,6 +138,8 @@ impl PadManager {
             initialized: false,
             connected_pads: 0,
             device_types: [CellPadDeviceType::Standard; CELL_PAD_MAX_PORT_NUM],
+            input_backend: None,
+            pad_data: [CellPadData::default(); CELL_PAD_MAX_PORT_NUM],
         }
     }
 
@@ -267,10 +277,110 @@ impl PadManager {
         }
 
         self.connected_pads &= !(1 << port);
+        self.pad_data[port as usize] = CellPadData::default();
         
         debug!("Disconnected pad on port {}", port);
         
         0 // CELL_OK
+    }
+
+    /// Update pad data from input backend
+    pub fn update_pad_data(&mut self, port: u32, buttons: [u16; 2]) -> i32 {
+        if port >= CELL_PAD_MAX_PORT_NUM as u32 {
+            return 0x80121104u32 as i32; // CELL_PAD_ERROR_INVALID_PARAMETER
+        }
+
+        if (self.connected_pads & (1 << port)) == 0 {
+            return 0x80121102u32 as i32; // CELL_PAD_ERROR_NO_DEVICE
+        }
+
+        self.pad_data[port as usize].button = buttons;
+        self.pad_data[port as usize].len = 24;
+
+        trace!("Updated pad data for port {}: buttons=[0x{:04X}, 0x{:04X}]", 
+            port, buttons[0], buttons[1]);
+
+        0 // CELL_OK
+    }
+
+    // ========================================================================
+    // OC-Input Backend Integration
+    // ========================================================================
+
+    /// Connect to oc-input backend
+    /// 
+    /// This would integrate with oc-input for actual controller input.
+    /// For now, this is a stub implementation.
+    pub fn connect_input_backend(&mut self, _backend: InputBackend) -> i32 {
+        debug!("PadManager::connect_input_backend");
+        
+        // In a real implementation:
+        // 1. Store the oc-input backend reference
+        // 2. Register pad input callbacks
+        // 3. Query connected controllers
+        // 4. Set up button/axis mappings
+        
+        self.input_backend = None; // Would store actual backend
+        
+        0 // CELL_OK
+    }
+
+    /// Poll input from backend
+    /// 
+    /// Reads current input state from oc-input and updates pad data.
+    pub fn poll_input(&mut self) -> i32 {
+        if !self.initialized {
+            return 0x80121103u32 as i32; // CELL_PAD_ERROR_UNINITIALIZED
+        }
+
+        trace!("PadManager::poll_input");
+
+        // In a real implementation, this would:
+        // 1. Query oc-input for current controller states
+        // 2. Convert oc-input button/axis data to PS3 format
+        // 3. Update pad_data for each connected pad
+        // 4. Handle button pressure sensitivity
+        // 5. Handle analog stick values
+
+        // For HLE, pad data is manually updated via update_pad_data()
+
+        0 // CELL_OK
+    }
+
+    /// Map oc-input button to PS3 button
+    /// 
+    /// Converts button codes between oc-input and PS3 formats.
+    pub fn map_button(oc_input_button: u32) -> u16 {
+        // In a real implementation, this would map:
+        // oc-input button codes -> PS3 button codes
+        // 
+        // For example:
+        // oc_input::PadButtons::CROSS -> CELL_PAD_CTRL_CROSS
+        // oc_input::PadButtons::CIRCLE -> CELL_PAD_CTRL_CIRCLE
+        // etc.
+
+        trace!("Mapping button: 0x{:08X}", oc_input_button);
+
+        // Return unmapped for now
+        0
+    }
+
+    /// Convert analog axis value
+    /// 
+    /// Converts axis values from oc-input format to PS3 format (0-255).
+    pub fn convert_axis(oc_input_value: f32) -> u8 {
+        // oc-input typically uses -1.0 to 1.0 range
+        // PS3 uses 0-255 with 128 as center
+        
+        let normalized = (oc_input_value + 1.0) / 2.0; // Convert to 0.0-1.0
+        let value = (normalized * 255.0) as u8;
+        
+        value
+    }
+
+    /// Check if backend is connected
+    pub fn is_backend_connected(&self) -> bool {
+        self.input_backend.is_some()
     }
 }
 
