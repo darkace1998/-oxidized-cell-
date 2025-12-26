@@ -107,6 +107,233 @@ struct VpostEntry {
     is_busy: bool,
     /// Color conversion backend
     converter: Option<ColorConverter>,
+    /// Image scaler
+    scaler: Option<Scaler>,
+}
+
+/// Scaling algorithm
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScalingAlgorithm {
+    /// Nearest neighbor (fastest)
+    NearestNeighbor = 0,
+    /// Bilinear interpolation
+    Bilinear = 1,
+    /// Bicubic interpolation (best quality)
+    Bicubic = 2,
+}
+
+/// Image scaler
+#[derive(Debug, Clone)]
+struct Scaler {
+    /// Scaling algorithm to use
+    algorithm: ScalingAlgorithm,
+}
+
+impl Scaler {
+    fn new(algorithm: ScalingAlgorithm) -> Self {
+        Self { algorithm }
+    }
+
+    /// Scale RGBA image using bilinear interpolation
+    fn scale_bilinear(
+        &self,
+        src: &[u8],
+        src_width: u32,
+        src_height: u32,
+        dst: &mut [u8],
+        dst_width: u32,
+        dst_height: u32,
+    ) -> Result<(), i32> {
+        trace!("Scaler::scale_bilinear: {}x{} -> {}x{}", src_width, src_height, dst_width, dst_height);
+
+        if src.len() < (src_width * src_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+        if dst.len() < (dst_width * dst_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+
+        let x_ratio = (src_width as f32 - 1.0) / (dst_width as f32);
+        let y_ratio = (src_height as f32 - 1.0) / (dst_height as f32);
+
+        for dy in 0..dst_height {
+            for dx in 0..dst_width {
+                let src_x = dx as f32 * x_ratio;
+                let src_y = dy as f32 * y_ratio;
+                
+                let x0 = src_x.floor() as u32;
+                let y0 = src_y.floor() as u32;
+                let x1 = (x0 + 1).min(src_width - 1);
+                let y1 = (y0 + 1).min(src_height - 1);
+                
+                let fx = src_x - x0 as f32;
+                let fy = src_y - y0 as f32;
+                
+                // Get four surrounding pixels
+                let p00_idx = ((y0 * src_width + x0) * 4) as usize;
+                let p10_idx = ((y0 * src_width + x1) * 4) as usize;
+                let p01_idx = ((y1 * src_width + x0) * 4) as usize;
+                let p11_idx = ((y1 * src_width + x1) * 4) as usize;
+                
+                let dst_idx = ((dy * dst_width + dx) * 4) as usize;
+                
+                // Bilinear interpolation for each channel
+                for c in 0..4 {
+                    let p00 = src[p00_idx + c] as f32;
+                    let p10 = src[p10_idx + c] as f32;
+                    let p01 = src[p01_idx + c] as f32;
+                    let p11 = src[p11_idx + c] as f32;
+                    
+                    let top = p00 * (1.0 - fx) + p10 * fx;
+                    let bottom = p01 * (1.0 - fx) + p11 * fx;
+                    let value = top * (1.0 - fy) + bottom * fy;
+                    
+                    dst[dst_idx + c] = value.clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Cubic interpolation helper
+    fn cubic_interpolate(&self, p: [f32; 4], x: f32) -> f32 {
+        p[1] + 0.5 * x * (p[2] - p[0] + x * (2.0 * p[0] - 5.0 * p[1] + 4.0 * p[2] - p[3] + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])))
+    }
+
+    /// Scale RGBA image using bicubic interpolation
+    fn scale_bicubic(
+        &self,
+        src: &[u8],
+        src_width: u32,
+        src_height: u32,
+        dst: &mut [u8],
+        dst_width: u32,
+        dst_height: u32,
+    ) -> Result<(), i32> {
+        trace!("Scaler::scale_bicubic: {}x{} -> {}x{}", src_width, src_height, dst_width, dst_height);
+
+        if src.len() < (src_width * src_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+        if dst.len() < (dst_width * dst_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+
+        let x_ratio = src_width as f32 / dst_width as f32;
+        let y_ratio = src_height as f32 / dst_height as f32;
+
+        for dy in 0..dst_height {
+            for dx in 0..dst_width {
+                let src_x = dx as f32 * x_ratio;
+                let src_y = dy as f32 * y_ratio;
+                
+                let x_int = src_x.floor() as i32;
+                let y_int = src_y.floor() as i32;
+                let fx = src_x - x_int as f32;
+                let fy = src_y - y_int as f32;
+                
+                let dst_idx = ((dy * dst_width + dx) * 4) as usize;
+                
+                // Bicubic interpolation for each channel
+                for c in 0..4 {
+                    let mut p = [[0.0f32; 4]; 4];
+                    
+                    // Get 4x4 pixel neighborhood
+                    for j in 0..4 {
+                        for i in 0..4 {
+                            let sx = (x_int - 1 + i as i32).clamp(0, src_width as i32 - 1) as u32;
+                            let sy = (y_int - 1 + j as i32).clamp(0, src_height as i32 - 1) as u32;
+                            let idx = ((sy * src_width + sx) * 4 + c as u32) as usize;
+                            p[j][i] = src[idx] as f32;
+                        }
+                    }
+                    
+                    // Interpolate in Y direction
+                    let mut arr = [0.0f32; 4];
+                    for i in 0..4 {
+                        arr[i] = self.cubic_interpolate(p[i], fx);
+                    }
+                    
+                    // Interpolate in X direction
+                    let value = self.cubic_interpolate(arr, fy);
+                    dst[dst_idx + c] = value.clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Scale RGBA image using nearest neighbor
+    fn scale_nearest(
+        &self,
+        src: &[u8],
+        src_width: u32,
+        src_height: u32,
+        dst: &mut [u8],
+        dst_width: u32,
+        dst_height: u32,
+    ) -> Result<(), i32> {
+        trace!("Scaler::scale_nearest: {}x{} -> {}x{}", src_width, src_height, dst_width, dst_height);
+
+        if src.len() < (src_width * src_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+        if dst.len() < (dst_width * dst_height * 4) as usize {
+            return Err(CELL_VPOST_ERROR_ARG);
+        }
+
+        let x_ratio = (src_width << 16) / dst_width;
+        let y_ratio = (src_height << 16) / dst_height;
+
+        for dy in 0..dst_height {
+            let src_y = ((dy * y_ratio) >> 16).min(src_height - 1);
+            for dx in 0..dst_width {
+                let src_x = ((dx * x_ratio) >> 16).min(src_width - 1);
+                
+                let src_idx = ((src_y * src_width + src_x) * 4) as usize;
+                let dst_idx = ((dy * dst_width + dx) * 4) as usize;
+                
+                dst[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Scale RGBA image
+    fn scale(
+        &self,
+        src: &[u8],
+        src_width: u32,
+        src_height: u32,
+        dst: &mut [u8],
+        dst_width: u32,
+        dst_height: u32,
+    ) -> Result<(), i32> {
+        // If dimensions are the same, just copy
+        if src_width == dst_width && src_height == dst_height {
+            let size = (src_width * src_height * 4) as usize;
+            if src.len() >= size && dst.len() >= size {
+                dst[..size].copy_from_slice(&src[..size]);
+                return Ok(());
+            }
+        }
+
+        match self.algorithm {
+            ScalingAlgorithm::NearestNeighbor => {
+                self.scale_nearest(src, src_width, src_height, dst, dst_width, dst_height)
+            }
+            ScalingAlgorithm::Bilinear => {
+                self.scale_bilinear(src, src_width, src_height, dst, dst_width, dst_height)
+            }
+            ScalingAlgorithm::Bicubic => {
+                self.scale_bicubic(src, src_width, src_height, dst, dst_width, dst_height)
+            }
+        }
+    }
 }
 
 /// Color conversion backend
@@ -300,6 +527,8 @@ impl ColorConverter {
 impl VpostEntry {
     fn new(in_format: CellVpostPictureFormat, out_format: CellVpostPictureFormat, mem_size: u32) -> Self {
         let converter = ColorConverter::new(&in_format, &out_format);
+        // Use bilinear scaling as default (good quality/performance trade-off)
+        let scaler = Scaler::new(ScalingAlgorithm::Bilinear);
         
         Self {
             in_format,
@@ -308,6 +537,7 @@ impl VpostEntry {
             frames_processed: 0,
             is_busy: false,
             converter: Some(converter),
+            scaler: Some(scaler),
         }
     }
 }
@@ -382,21 +612,40 @@ impl VpostManager {
             return Err(CELL_VPOST_ERROR_ARG);
         }
 
-        // Perform color conversion
-        if let Some(converter) = &entry.converter {
+        // Perform color conversion and scaling
+        if let (Some(converter), Some(scaler)) = (&entry.converter, &entry.scaler) {
             // Simulate input and output buffers (in real impl, would read from memory)
             let in_size = (pic_info.in_width * pic_info.in_height * 3 / 2) as usize; // YUV420 size
-            let out_size = (pic_info.out_width * pic_info.out_height * 4) as usize; // RGBA size
+            let intermediate_size = (pic_info.in_width * pic_info.in_height * 4) as usize; // RGBA size before scaling
+            let out_size = (pic_info.out_width * pic_info.out_height * 4) as usize; // Final RGBA size
             
             let in_buffer = vec![128u8; in_size]; // Dummy input
-            let mut out_buffer = vec![0u8; out_size]; // Output buffer
+            let mut intermediate_buffer = vec![0u8; intermediate_size]; // After color conversion
+            let mut out_buffer = vec![0u8; out_size]; // Final output buffer
             
-            // Perform the conversion
-            converter.convert(&in_buffer, pic_info, &mut out_buffer)?;
+            // Step 1: Perform color conversion to RGBA at input resolution
+            converter.convert(&in_buffer, pic_info, &mut intermediate_buffer)?;
             
-            trace!("VpostManager::exec: converted {}x{} to {}x{}", 
-                   pic_info.in_width, pic_info.in_height,
-                   pic_info.out_width, pic_info.out_height);
+            // Step 2: Scale if dimensions differ
+            if pic_info.in_width != pic_info.out_width || pic_info.in_height != pic_info.out_height {
+                scaler.scale(
+                    &intermediate_buffer,
+                    pic_info.in_width,
+                    pic_info.in_height,
+                    &mut out_buffer,
+                    pic_info.out_width,
+                    pic_info.out_height,
+                )?;
+                
+                trace!("VpostManager::exec: converted and scaled {}x{} to {}x{}", 
+                       pic_info.in_width, pic_info.in_height,
+                       pic_info.out_width, pic_info.out_height);
+            } else {
+                // No scaling needed, just use the converted buffer
+                out_buffer.copy_from_slice(&intermediate_buffer[..out_size]);
+                trace!("VpostManager::exec: converted {}x{} (no scaling)", 
+                       pic_info.in_width, pic_info.in_height);
+            }
         }
 
         entry.frames_processed += 1;
@@ -419,6 +668,14 @@ impl VpostManager {
     /// Get the number of active post-processors
     pub fn active_count(&self) -> usize {
         self.processors.len()
+    }
+
+    /// Set the scaling algorithm for a post-processor
+    pub fn set_scaling_algorithm(&mut self, handle: VpostHandle, algorithm: ScalingAlgorithm) -> Result<(), i32> {
+        let entry = self.processors.get_mut(&handle).ok_or(CELL_VPOST_ERROR_ARG)?;
+        entry.scaler = Some(Scaler::new(algorithm));
+        trace!("VpostManager::set_scaling_algorithm: handle={}, algorithm={:?}", handle, algorithm);
+        Ok(())
     }
 }
 

@@ -104,6 +104,91 @@ impl TransactionEntry {
     }
 }
 
+/// HTTP backend for actual network requests
+#[derive(Debug, Clone)]
+struct HttpBackend {
+    /// Whether to use actual networking or simulation
+    use_real_network: bool,
+}
+
+impl HttpBackend {
+    fn new() -> Self {
+        Self {
+            // Use simulation by default for safety
+            use_real_network: false,
+        }
+    }
+
+    /// Send HTTP request
+    fn send_request(
+        &self,
+        method: &CellHttpMethod,
+        url: &str,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Result<HttpResponse, i32> {
+        trace!("HttpBackend::send_request: {:?} {}", method, url);
+
+        if self.use_real_network {
+            // In a real implementation:
+            // 1. Parse URL into components
+            // 2. Create HTTP request with method, headers, body
+            // 3. Send request using reqwest/curl/hyper
+            // 4. Read response
+            // 5. Parse response headers and status
+            trace!("HttpBackend: real networking not implemented, using simulation");
+        }
+
+        // Simulate HTTP response
+        let response = HttpResponse {
+            status_code: 200,
+            reason: String::from("OK"),
+            headers: vec![
+                (String::from("Content-Type"), String::from("text/html; charset=UTF-8")),
+                (String::from("Content-Length"), String::from("1234")),
+                (String::from("Connection"), String::from("close")),
+            ],
+            body: vec![],
+        };
+
+        Ok(response)
+    }
+
+    /// Send request with proxy
+    fn send_request_with_proxy(
+        &self,
+        method: &CellHttpMethod,
+        url: &str,
+        headers: &[(String, String)],
+        body: &[u8],
+        proxy_host: &str,
+        proxy_port: u16,
+    ) -> Result<HttpResponse, i32> {
+        trace!("HttpBackend::send_request_with_proxy: {:?} {} via {}:{}", 
+               method, url, proxy_host, proxy_port);
+
+        if self.use_real_network {
+            // In a real implementation:
+            // 1. Connect to proxy
+            // 2. Send CONNECT request for HTTPS or direct request for HTTP
+            // 3. Forward request through proxy
+            trace!("HttpBackend: proxy not implemented, using direct request");
+        }
+
+        // Fall back to regular request
+        self.send_request(method, url, headers, body)
+    }
+}
+
+/// HTTP response
+#[derive(Debug, Clone)]
+struct HttpResponse {
+    status_code: u32,
+    reason: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
 /// Client entry
 #[derive(Debug)]
 struct ClientEntry {
@@ -113,6 +198,8 @@ struct ClientEntry {
     proxy_port: u16,
     timeout: u32,
     version: CellHttpVersion,
+    /// HTTP backend
+    backend: HttpBackend,
 }
 
 impl ClientEntry {
@@ -124,6 +211,7 @@ impl ClientEntry {
             proxy_port: 0,
             timeout: 30000, // 30 seconds default
             version: CellHttpVersion::Http11,
+            backend: HttpBackend::new(),
         }
     }
 }
@@ -258,13 +346,35 @@ impl HttpManager {
             return Err(CELL_HTTP_ERROR_BUSY);
         }
 
-        // TODO: Integrate with actual HTTP networking
+        // Send request through backend
+        let response = if let (Some(proxy_host), proxy_port) = (&client.proxy_host, client.proxy_port) {
+            client.backend.send_request_with_proxy(
+                &transaction.method,
+                &transaction.url,
+                &transaction.request_headers,
+                &[], // TODO: Get request body
+                proxy_host,
+                proxy_port,
+            )?
+        } else {
+            client.backend.send_request(
+                &transaction.method,
+                &transaction.url,
+                &transaction.request_headers,
+                &[], // TODO: Get request body
+            )?
+        };
+
+        // Update transaction with response
         transaction.bytes_sent = data_size;
         transaction.state = TransactionState::RequestSent;
-
-        // Simulate receiving a response
-        transaction.status_code = 200;
+        transaction.status_code = response.status_code;
+        transaction.response_headers = response.headers;
+        transaction.content_length = response.body.len() as u64;
         transaction.state = TransactionState::ResponseReceived;
+
+        trace!("HttpManager::send_request: {} {} -> status {}", 
+               transaction.method as u32, transaction.url, transaction.status_code);
 
         Ok(())
     }
