@@ -2,16 +2,15 @@
 //!
 //! Main entry point for the emulator application.
 
+use oc_core::config::Config;
 use oc_ui::app;
 
 fn main() -> eframe::Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Load config to get initial log level
+    let config = Config::load().unwrap_or_default();
+    
+    // Initialize logging with reloadable filter
+    oc_core::logging::init_with_reload(config.debug.log_level);
 
     tracing::info!("Starting Oxidized-Cell PS3 Emulator");
 

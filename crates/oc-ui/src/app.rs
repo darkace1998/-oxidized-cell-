@@ -597,12 +597,26 @@ impl eframe::App for OxidizedCellApp {
         // Settings window
         if self.show_settings {
             let mut close_requested = false;
+            let old_log_level = self.config.debug.log_level;
+            
             egui::Window::new("Settings")
                 .open(&mut self.show_settings)
                 .default_width(600.0)
                 .default_height(500.0)
                 .show(ctx, |ui| {
                     if self.settings_panel.show(ui, &mut self.config) {
+                        // Check if log level changed
+                        if self.config.debug.log_level != old_log_level {
+                            // Update the tracing subscriber filter at runtime
+                            if oc_core::logging::set_log_level(self.config.debug.log_level) {
+                                self.log_viewer.log(
+                                    LogLevel::Info, 
+                                    "oc-ui", 
+                                    &format!("Log level changed to: {:?}", self.config.debug.log_level)
+                                );
+                            }
+                        }
+                        
                         // Auto-save on change
                         let _ = self.config.save();
                     }
