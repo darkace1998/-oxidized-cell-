@@ -646,17 +646,21 @@ impl SelfLoader {
                     section_data[0..4] == [0x7F, b'E', b'L', b'F'];
                 
                 if has_elf_magic && dest_offset == 0 {
-                    // This section's data starts at offset 0, which means it includes
-                    // the ELF header area. We need to use this as the base but ensure
-                    // we have enough space for all sections.
-                    debug!("Section {} contains ELF header at offset 0, using as base", i);
+                    // This section contains segment data that starts at file offset 0,
+                    // which means it includes the ELF header and program headers area.
+                    // 
+                    // IMPORTANT: We overlay this onto elf_data rather than replacing it
+                    // entirely. The previous approach (elf_data.clear() + extend_from_slice)
+                    // would discard any buffer space needed for later sections that have
+                    // higher destination offsets. By overlaying, subsequent sections can
+                    // still write to their correct positions in the buffer.
+                    debug!("Section {} contains ELF header at offset 0, overlaying onto buffer", i);
                     
-                    // Replace the beginning of elf_data with this section's content
-                    // but keep any existing content beyond this section's length
+                    // Ensure buffer is large enough for this section's data
                     if section_data.len() > elf_data.len() {
                         elf_data.resize(section_data.len(), 0);
                     }
-                    // Copy section data starting at offset 0
+                    // Overlay section data at offset 0 (existing data beyond this is preserved)
                     elf_data[0..section_data.len()].copy_from_slice(section_data);
                 } else {
                     // Normal case - place at the specified offset
