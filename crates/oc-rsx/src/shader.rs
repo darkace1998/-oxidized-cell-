@@ -248,6 +248,7 @@ impl ShaderTranslator {
     }
 
     /// Decode RSX vertex program instruction (placeholder)
+    #[allow(dead_code)]
     fn decode_vertex_instruction(_instruction: u32) -> Option<ShaderInstruction> {
         // TODO: Implement RSX vertex program instruction decoding
         // RSX vertex programs use a different instruction format than fragment programs
@@ -255,6 +256,7 @@ impl ShaderTranslator {
     }
 
     /// Decode RSX fragment program instruction (placeholder)
+    #[allow(dead_code)]
     fn decode_fragment_instruction(_instruction: u32) -> Option<ShaderInstruction> {
         // TODO: Implement RSX fragment program instruction decoding
         // RSX fragment programs have their own instruction encoding
@@ -262,6 +264,7 @@ impl ShaderTranslator {
     }
 
     /// Translate RSX instruction to SPIR-V (placeholder)
+    #[allow(dead_code)]
     fn translate_instruction(_instr: &ShaderInstruction) -> Vec<u32> {
         // TODO: Implement translation of individual RSX instructions to SPIR-V
         // This would convert operations like MOV, MAD, DP4, etc. to SPIR-V opcodes

@@ -375,7 +375,7 @@ impl VdecManager {
         }
     }
 
-    pub fn get_picture(&mut self, handle: VdecHandle, pic_format: &CellVdecPicFormat) -> Result<CellVdecPicItem, i32> {
+    pub fn get_picture(&mut self, handle: VdecHandle, _pic_format: &CellVdecPicFormat) -> Result<CellVdecPicItem, i32> {
         let entry = self.decoders.get_mut(&handle).ok_or(CELL_VDEC_ERROR_ARG)?;
         
         if !entry.is_seq_started {
@@ -385,7 +385,7 @@ impl VdecManager {
         entry.picture_queue.pop_front().ok_or(CELL_VDEC_ERROR_EMPTY)
     }
 
-    pub fn set_frame_rate(&mut self, handle: VdecHandle, frame_rate: u32) -> Result<(), i32> {
+    pub fn set_frame_rate(&mut self, handle: VdecHandle, _frame_rate: u32) -> Result<(), i32> {
         let _entry = self.decoders.get_mut(&handle).ok_or(CELL_VDEC_ERROR_ARG)?;
         
         // TODO: Store frame rate configuration

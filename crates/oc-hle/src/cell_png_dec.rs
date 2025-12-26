@@ -184,7 +184,7 @@ impl PngDecoder {
     }
 
     /// Decode PNG data to RGBA format
-    fn decode(&self, src_data: &[u8], dst_buffer: &mut [u8], out_width: u32, out_height: u32) -> Result<(), i32> {
+    fn decode(&self, _src_data: &[u8], dst_buffer: &mut [u8], out_width: u32, out_height: u32) -> Result<(), i32> {
         trace!("PngDecoder::decode: {}x{} -> {}x{}", self.width, self.height, out_width, out_height);
         
         let pixel_count = (out_width * out_height) as usize;

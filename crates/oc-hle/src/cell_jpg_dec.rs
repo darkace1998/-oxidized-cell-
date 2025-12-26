@@ -111,7 +111,7 @@ impl JpegDecoder {
     }
 
     /// Decode baseline JPEG
-    fn decode_baseline(&self, src_data: &[u8], dst_buffer: &mut [u8]) -> Result<(), i32> {
+    fn decode_baseline(&self, _src_data: &[u8], dst_buffer: &mut [u8]) -> Result<(), i32> {
         trace!("JpegDecoder::decode_baseline: {}x{}", self.width, self.height);
         
         let pixel_count = (self.width * self.height) as usize;
@@ -143,7 +143,7 @@ impl JpegDecoder {
     }
 
     /// Decode progressive JPEG scan by scan
-    fn decode_progressive_scan(&mut self, src_data: &[u8], dst_buffer: &mut [u8]) -> Result<bool, i32> {
+    fn decode_progressive_scan(&mut self, _src_data: &[u8], dst_buffer: &mut [u8]) -> Result<bool, i32> {
         trace!("JpegDecoder::decode_progressive_scan: scan {}/{}", 
                self.current_scan, self.progressive_scans.len());
         

@@ -109,6 +109,7 @@ pub struct PostProcessPipeline {
 }
 
 /// Intermediate render target for post-processing
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct IntermediateTarget {
     /// Width

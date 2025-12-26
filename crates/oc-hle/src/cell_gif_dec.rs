@@ -575,11 +575,11 @@ pub fn cell_gif_dec_read_header(
 
 /// cellGifDecDecodeData - Decode GIF data
 pub fn cell_gif_dec_decode_data(
-    main_handle: u32,
-    sub_handle: u32,
+    _main_handle: u32,
+    _sub_handle: u32,
     data: *mut u8,
-    data_ctrl_param: *const u32,
-    data_out_info: *mut u32,
+    _data_ctrl_param: *const u32,
+    _data_out_info: *mut u32,
 ) -> i32 {
     trace!("cellGifDecDecodeData called");
     

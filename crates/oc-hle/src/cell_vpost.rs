@@ -380,7 +380,7 @@ impl ColorConverter {
     }
 
     /// Convert YUV420 to RGBA using specified color matrix
-    fn yuv420_to_rgba(&self, y_plane: &[u8], u_plane: &[u8], v_plane: &[u8], 
+    fn yuv420_to_rgba(&self, y_plane: &[u8], _u_plane: &[u8], _v_plane: &[u8], 
                        width: u32, height: u32, out_buffer: &mut [u8]) -> Result<(), i32> {
         trace!("ColorConverter::yuv420_to_rgba: {}x{}, matrix={:?}", width, height, self.color_matrix);
         

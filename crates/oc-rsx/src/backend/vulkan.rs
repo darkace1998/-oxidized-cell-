@@ -10,6 +10,7 @@ use gpu_allocator::MemoryLocation;
 use std::ffi::CString;
 use std::sync::{Arc, Mutex};
 
+#[allow(dead_code)]
 /// Vulkan graphics backend
 pub struct VulkanBackend {
     /// Entry point for Vulkan API
@@ -313,6 +314,7 @@ impl VulkanBackend {
     }
 
     /// Allocate command buffer
+    #[allow(dead_code)]
     fn allocate_command_buffer(
         device: &ash::Device,
         command_pool: vk::CommandPool,

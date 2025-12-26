@@ -124,7 +124,7 @@ impl Scheduler {
 
     /// Remove a thread from the scheduler
     pub fn remove_thread(&mut self, id: ThreadId) {
-        if let Some(thread) = self.threads.remove(&id) {
+        if let Some(_thread) = self.threads.remove(&id) {
             // If it's the current thread, clear current
             if self.current == Some(id) {
                 self.current = None;
@@ -188,7 +188,7 @@ impl Scheduler {
         }
 
         // Get next ready thread
-        while let Some(mut thread) = self.ready_queue.pop() {
+        while let Some(thread) = self.ready_queue.pop() {
             // Check if thread still exists and is ready
             if let Some(stored_thread) = self.threads.get_mut(&thread.id) {
                 if stored_thread.state == ThreadState::Ready {
