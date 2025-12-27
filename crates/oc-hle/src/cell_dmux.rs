@@ -1047,7 +1047,7 @@ mod tests {
         let mut handle = 0;
         
         // Open should succeed
-        let result = cell_dmux_open(&dmux_type, &resource, &cb, &mut handle);
+        let result = unsafe { cell_dmux_open(&dmux_type, &resource, &cb, &mut handle) };
         assert_eq!(result, 0);
         assert!(handle > 0);
         

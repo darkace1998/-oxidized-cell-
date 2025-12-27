@@ -780,7 +780,7 @@ mod tests {
         };
         let mut thread_out = CellJpgDecThreadOutParam { version: 0 };
         
-        let result = cell_jpg_dec_create(&mut main_handle, &thread_in, &mut thread_out);
+        let result = unsafe { cell_jpg_dec_create(&mut main_handle, &thread_in, &mut thread_out) };
         assert_eq!(result, 0);
         assert!(main_handle.main_handle > 0);
     }
@@ -797,7 +797,9 @@ mod tests {
         };
         let mut thread_out = CellJpgDecThreadOutParam { version: 0 };
         
-        assert_eq!(cell_jpg_dec_create(&mut main_handle, &thread_in, &mut thread_out), 0);
+        unsafe {
+            assert_eq!(cell_jpg_dec_create(&mut main_handle, &thread_in, &mut thread_out), 0);
+        }
         assert_eq!(cell_jpg_dec_destroy(main_handle.main_handle), 0);
     }
 }

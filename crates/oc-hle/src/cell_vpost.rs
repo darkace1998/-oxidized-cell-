@@ -928,7 +928,9 @@ mod tests {
         let mut handle = 0;
 
         // Test the API function (open returns success, close uses new manager so may fail)
-        assert_eq!(cell_vpost_open(&cfg, &resource, &mut handle), 0);
+        unsafe {
+            assert_eq!(cell_vpost_open(&cfg, &resource, &mut handle), 0);
+        }
         assert!(handle > 0);
         // Note: cell_vpost_close uses a temporary manager instance (TODO: use global)
         // so it will return an error. Test the manager directly for lifecycle:
@@ -963,7 +965,9 @@ mod tests {
             ppu_thread_stack_size: 0,
         };
 
-        assert_eq!(cell_vpost_query_attr(&cfg, &mut attr), 0);
+        unsafe {
+            assert_eq!(cell_vpost_query_attr(&cfg, &mut attr), 0);
+        }
         assert!(attr.mem_size > 0);
     }
 
