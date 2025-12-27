@@ -641,16 +641,27 @@ impl SelfLoader {
                 let section_data = &final_section[..];
                 
                 // Check if this section data starts with ELF magic
-                // If so, it contains the full segment including headers
+                // If so, it contains segment data that starts at file offset 0
                 let has_elf_magic = section_data.len() >= 4 && 
                     section_data[0..4] == [0x7F, b'E', b'L', b'F'];
                 
                 if has_elf_magic && dest_offset == 0 {
-                    // This section contains the entire ELF from the beginning
-                    // Replace our entire elf_data with this
-                    debug!("Section {} contains ELF header, using as base", i);
-                    elf_data.clear();
-                    elf_data.extend_from_slice(section_data);
+                    // This section contains segment data that starts at file offset 0,
+                    // which means it includes the ELF header and program headers area.
+                    // 
+                    // IMPORTANT: We overlay this onto elf_data rather than replacing it
+                    // entirely. The previous approach (elf_data.clear() + extend_from_slice)
+                    // would discard any buffer space needed for later sections that have
+                    // higher destination offsets. By overlaying, subsequent sections can
+                    // still write to their correct positions in the buffer.
+                    debug!("Section {} contains ELF header at offset 0, overlaying onto buffer", i);
+                    
+                    // Ensure buffer is large enough for this section's data
+                    if section_data.len() > elf_data.len() {
+                        elf_data.resize(section_data.len(), 0);
+                    }
+                    // Overlay section data at offset 0 (existing data beyond this is preserved)
+                    elf_data[0..section_data.len()].copy_from_slice(section_data);
                 } else {
                     // Normal case - place at the specified offset
                     if elf_data.len() < dest_offset + section_data.len() {
